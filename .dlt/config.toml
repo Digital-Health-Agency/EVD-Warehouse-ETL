@@ -1,5 +1,0 @@
-# Non-secret dlt configuration. Currently empty — bronze sources hardcode
-# their bucket_url (it's fixed per source, see bronze/<source>/assets.py) and
-# everything that varies by environment (credentials, hosts) is a secret.
-# Override any dlt setting with an env var if that changes, e.g.
-# DESTINATION__POSTGRES__CREDENTIALS__HOST=some-host
