@@ -17,14 +17,14 @@ See [`docs/architecture.md`](docs/architecture.md) for the full design and
 
 ## Stack
 
-| Layer | Tool | Notes |
-|---|---|---|
-| Raw lake | MinIO | S3-compatible, bucket `evd`, one prefix per sending system |
-| Lake reader | DuckDB | `httpfs`, reads JSON (incl. gzip) directly from MinIO |
-| Orchestration | Dagster | Bronze ingestion assets + `@dbt_assets` wrapping dbt |
-| Warehouse | Postgres | Schemas: `bronze`, `silver`, `gold` |
-| Transform | dbt-postgres | Silver (typed/deduped) → gold (marts) |
-| Python deps | uv | Single `pyproject.toml` at root |
+| Layer         | Tool         | Notes                                                      |
+| ------------- | ------------ | ---------------------------------------------------------- |
+| Raw lake      | MinIO        | S3-compatible, bucket `evd`, one prefix per sending system |
+| Lake reader   | DuckDB       | `httpfs`, reads JSON (incl. gzip) directly from MinIO      |
+| Orchestration | Dagster      | Bronze ingestion assets + `@dbt_assets` wrapping dbt       |
+| Warehouse     | Postgres     | Schemas: `bronze`, `silver`, `gold`                        |
+| Transform     | dbt-postgres | Silver (typed/deduped) → gold (marts)                      |
+| Python deps   | uv           | Single `pyproject.toml` at root                            |
 
 ## Repository layout
 
