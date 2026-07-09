@@ -11,7 +11,7 @@ seed-paths: ["seeds"]
 
 seeds:
   evd_transform:
-    +schema: seeds
+    +schema: silver
 
 models:
   evd_transform:
