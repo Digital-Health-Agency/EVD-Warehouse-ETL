@@ -38,8 +38,15 @@ def flatten_record(record: dict, sep: str = "__", max_depth: int = 6) -> dict[st
                 _walk(item, f"{path}{sep}{index}" if path else str(index), depth + 1)
         elif isinstance(value, (dict, list)):
             flat[path] = json.dumps(value, sort_keys=True, default=str)
-        else:
+        elif value is None or isinstance(value, bool):
             flat[path] = value
+        else:
+            # DuckDB's JSON reader sniffs shape and hands back rich types for
+            # plain JSON strings (uuid.UUID, datetime.date/datetime, Decimal,
+            # ...) instead of str. Bronze's typing is intentionally two-valued
+            # (BOOLEAN/TEXT) — normalize every non-bool leaf to str here so
+            # infer_pg_type/_coerce never see anything psycopg2 can't adapt.
+            flat[path] = str(value)
 
     for key, value in record.items():
         _walk(value, str(key), 0)
@@ -47,12 +54,18 @@ def flatten_record(record: dict, sep: str = "__", max_depth: int = 6) -> dict[st
     return flat
 
 
-def sanitize_column_name(path: str) -> str:
+def sanitize_column_name(path: str, reserved: frozenset[str] = frozenset()) -> str:
     """Turn a flattened field path into a valid, unique Postgres identifier.
 
     Leading/trailing underscores are always stripped — this is what keeps
     sanitized data columns from ever colliding with the `_`-prefixed envelope
-    columns (`_ingested_at`, `_raw_hash`, ...), which are reserved.
+    columns (`_ingested_at`, `_raw_hash`, ...), which are reserved. But
+    stripping the leading underscore can itself produce a collision: a source
+    field literally named `_id` (e.g. a Mongo-shaped export) sanitizes to
+    `id`, which is also the surrogate `BIGSERIAL PRIMARY KEY` column — without
+    disambiguation the source's string id would silently target that bigint
+    column instead of getting its own. `reserved` (envelope names stripped of
+    their leading underscore, plus `id`) catches that case.
     """
     # Note: no collapsing of repeated underscores here — `__` is flatten_record's
     # nesting separator and must survive sanitization intact.
@@ -61,6 +74,8 @@ def sanitize_column_name(path: str) -> str:
         name = "field"
     if name[0].isdigit():
         name = f"_{name}"
+    if name in reserved:
+        name = f"{name}_field"
     if len(name) > _IDENTIFIER_MAX_LEN:
         digest = hashlib.md5(name.encode()).hexdigest()[:8]
         name = f"{name[:_IDENTIFIER_MAX_LEN - 9]}_{digest}"

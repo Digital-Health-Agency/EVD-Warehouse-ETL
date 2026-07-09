@@ -9,7 +9,7 @@ Usage: uv run python scripts/infer_schema.py --source lims --sample 20
 import argparse
 import os
 
-from evd_orchestration.assets.bronze.ingest import read_source_records
+from evd_orchestration.assets.bronze.ingest import RESERVED_COLUMN_NAMES, read_source_records
 from evd_orchestration.assets.bronze.schema_inference import (
     flatten_record,
     infer_pg_type,
@@ -56,7 +56,10 @@ def main() -> None:
         records = read_source_records(duckdb, minio.bucket, key)
         total_records += len(records)
         for record in records:
-            flat = {sanitize_column_name(k): v for k, v in flatten_record(record).items()}
+            flat = {
+                sanitize_column_name(k, reserved=RESERVED_COLUMN_NAMES): v
+                for k, v in flatten_record(record).items()
+            }
             for col, value in flat.items():
                 required_columns.setdefault(col, infer_pg_type(value))
 

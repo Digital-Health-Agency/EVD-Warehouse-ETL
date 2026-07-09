@@ -1,3 +1,6 @@
+import uuid
+from datetime import date, datetime, timezone
+
 from evd_orchestration.assets.bronze.schema_inference import (
     canonical_hash,
     diff_new_columns,
@@ -47,6 +50,26 @@ def test_flatten_record_empty_dict_and_list_become_none():
     assert flat["empty_list"] is None
 
 
+def test_flatten_record_stringifies_non_bool_rich_types():
+    # DuckDB's JSON reader sniffs shape and can hand back rich Python types
+    # (uuid.UUID, date/datetime) for what was a plain JSON string — bronze
+    # must still see plain str so it fits a TEXT column and psycopg2 can
+    # adapt it (psycopg2 has no adapter for uuid.UUID by default).
+    record = {
+        "id": uuid.UUID("0986fbb0-7ab0-11f1-afa9-337e475d71c6"),
+        "date_of_birth": date(2008, 6, 15),
+        "created_timestamp": datetime(2026, 7, 8, 12, 33, 11, tzinfo=timezone.utc),
+        "active": True,
+    }
+    flat = flatten_record(record)
+
+    assert flat["id"] == "0986fbb0-7ab0-11f1-afa9-337e475d71c6"
+    assert isinstance(flat["id"], str)
+    assert flat["date_of_birth"] == "2008-06-15"
+    assert isinstance(flat["created_timestamp"], str)
+    assert flat["active"] is True  # real booleans stay bool, not stringified
+
+
 def test_sanitize_column_name_basic():
     assert sanitize_column_name("patient__address__city") == "patient__address__city"
     assert sanitize_column_name("Patient.Address.City") == "patient_address_city"
@@ -54,6 +77,16 @@ def test_sanitize_column_name_basic():
 
 def test_sanitize_column_name_strips_leading_underscore_reserved_for_envelope():
     assert sanitize_column_name("_raw_hash") == "raw_hash"
+
+
+def test_sanitize_column_name_disambiguates_reserved_collisions():
+    # A Mongo-shaped source field literally named "_id" strips to "id", which
+    # is also the surrogate BIGSERIAL PRIMARY KEY column — must not collide.
+    reserved = frozenset({"id", "raw_hash"})
+    assert sanitize_column_name("_id", reserved=reserved) == "id_field"
+    assert sanitize_column_name("_raw_hash", reserved=reserved) == "raw_hash_field"
+    # unreserved names are unaffected
+    assert sanitize_column_name("specimenId", reserved=reserved) == "specimenid"
 
 
 def test_sanitize_column_name_leading_digit_gets_prefixed():
