@@ -13,6 +13,7 @@ ingest_job = define_asset_job(
         "bronze_mdharura_raw",
         "bronze_krcs_evd_screening_raw",
         "bronze_echis_raw",
+        "bronze_uhai_raw",
     ),
 )
 

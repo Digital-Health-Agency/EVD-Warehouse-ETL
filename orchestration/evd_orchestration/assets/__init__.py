@@ -6,6 +6,7 @@ from .bronze import (
     bronze_krcs_evd_screening_raw,
     bronze_lims_raw,
     bronze_mdharura_raw,
+    bronze_uhai_raw,
 )
 from .transform import evd_dbt_assets
 
@@ -17,5 +18,6 @@ __all__ = [
     "bronze_krcs_evd_screening_raw",
     "bronze_lims_raw",
     "bronze_mdharura_raw",
+    "bronze_uhai_raw",
     "evd_dbt_assets",
 ]

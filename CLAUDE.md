@@ -93,8 +93,14 @@ non-`_dlt*` candidate exists rather than guessing (see
 
 1. `assets/bronze/<system>.py`:
    `bronze_<system>_raw = build_bronze_asset("<system>", folder="<entity>")`.
-2. Register in `assets/bronze/__init__.py`, `assets/__init__.py`, and
-   `jobs.py`'s `ingest_job` selection.
+2. Register in `assets/bronze/__init__.py`, `assets/__init__.py`,
+   `jobs.py`'s `ingest_job` selection, **and** `evd_orchestration/__init__.py`
+   — both the import list and the `Definitions(assets=[...])` list. This last
+   one is the step that's easy to miss: the `assets/bronze/__init__.py` /
+   `assets/__init__.py` re-exports and the `jobs.py` selection string do
+   *not* register the asset with Dagster — only appearing in
+   `Definitions(assets=[...])` does. Skipping it produces a Dagster load
+   error even though every other file looks correctly wired up.
 3. Add `bronze.<system>_raw` as a source in
    `transform/evd_transform/models/silver/_sources.yml`.
 

@@ -26,3 +26,5 @@ sources:
           asset discovers it at run time and skips until it appears.
       - name: echis_raw
         description: Raw eCHIS signal records, flattened and staged from MinIO.
+      - name: uhai_raw
+        description: Raw UHAI traveler screening records, flattened and staged from MinIO.

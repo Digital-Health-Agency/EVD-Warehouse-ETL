@@ -11,6 +11,7 @@ from evd_orchestration.assets import (
     bronze_krcs_evd_screening_raw,
     bronze_lims_raw,
     bronze_mdharura_raw,
+    bronze_uhai_raw,
     evd_dbt_assets,
 )
 from evd_orchestration.assets.transform import DBT_PROFILES_DIR, DBT_PROJECT_DIR
@@ -27,6 +28,7 @@ defs = Definitions(
         bronze_mdharura_raw,
         bronze_krcs_evd_screening_raw,
         bronze_echis_raw,
+        bronze_uhai_raw,
         evd_dbt_assets,
     ],
     jobs=[ingest_job, dbt_job],
