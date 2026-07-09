@@ -3,7 +3,15 @@ import os
 from dagster import Definitions
 from dagster_dbt import DbtCliResource
 
-from evd_orchestration.assets import bronze_lims_raw, evd_dbt_assets
+from evd_orchestration.assets import (
+    bronze_adam_cases_raw,
+    bronze_adam_travellers_raw,
+    bronze_cbs_raw,
+    bronze_krcs_evd_screening_raw,
+    bronze_lims_raw,
+    bronze_mdharura_raw,
+    evd_dbt_assets,
+)
 from evd_orchestration.assets.transform import DBT_PROFILES_DIR, DBT_PROJECT_DIR
 from evd_orchestration.jobs import dbt_job, ingest_job
 from evd_orchestration.resources import DuckDBResource, MinIOResource, PostgresResource
@@ -12,6 +20,11 @@ from evd_orchestration.schedules import lims_daily_schedule
 defs = Definitions(
     assets=[
         bronze_lims_raw,
+        bronze_adam_cases_raw,
+        bronze_adam_travellers_raw,
+        bronze_cbs_raw,
+        bronze_mdharura_raw,
+        bronze_krcs_evd_screening_raw,
         evd_dbt_assets,
     ],
     jobs=[ingest_job, dbt_job],

@@ -25,6 +25,11 @@ ENVELOPE_COLUMNS = [
     "_raw_hash",
     "_processed",
 ]
+# "id" is the surrogate BIGSERIAL PRIMARY KEY (see _ensure_table); the rest are
+# envelope columns with their reserved leading underscore stripped. A sanitized
+# data column landing on any of these would silently collide with a reserved
+# column instead of getting its own — see sanitize_column_name.
+RESERVED_COLUMN_NAMES = frozenset({"id"} | {c.lstrip("_") for c in ENVELOPE_COLUMNS})
 
 
 def read_source_records(duckdb: DuckDBResource, bucket: str, key: str) -> list[dict]:
@@ -182,7 +187,10 @@ def build_bronze_asset(source: str, folder: str | None = "records") -> AssetsDef
             flattened: list[tuple[dict, dict]] = []
             required_columns: dict[str, str] = {}
             for record in raw_records:
-                flat = {sanitize_column_name(k): v for k, v in flatten_record(record).items()}
+                flat = {
+                    sanitize_column_name(k, reserved=RESERVED_COLUMN_NAMES): v
+                    for k, v in flatten_record(record).items()
+                }
                 for col, value in flat.items():
                     required_columns.setdefault(col, infer_pg_type(value))
                 flattened.append((record, flat))
