@@ -12,6 +12,9 @@ build/
 # uv
 uv.lock
 
+#vscode
+.vscode/
+
 # dbt
 transform/evd_transform/target/
 transform/evd_transform/dbt_packages/

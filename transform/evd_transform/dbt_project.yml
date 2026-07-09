@@ -16,7 +16,7 @@ seeds:
 models:
   evd_transform:
     silver:
-      +materialized: view
+      +materialized: table
       +schema: silver
     gold:
       +materialized: table

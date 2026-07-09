@@ -12,6 +12,9 @@ explore:
 ingest:
 	uv run dagster asset materialize -m evd_orchestration --select bronze_lims_raw
 
+dbt-clean:
+	uv run --env-file .env dbt clean --project-dir transform/evd_transform --profiles-dir transform
+
 dbt-deps:
 	uv run --env-file .env dbt deps --project-dir transform/evd_transform --profiles-dir transform
 
