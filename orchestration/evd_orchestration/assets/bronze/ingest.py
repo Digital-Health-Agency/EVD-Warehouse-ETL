@@ -121,17 +121,21 @@ def _insert_rows(cursor, table: str, columns: list[str], rows: list[tuple]) -> i
     return cursor.rowcount
 
 
-def build_bronze_asset(source: str) -> AssetsDefinition:
+def build_bronze_asset(source: str, folder: str | None = "records") -> AssetsDefinition:
     """Factory: one Dagster asset per sending system.
 
-    `f"s3://{bucket}/{source}_raw/records/"` -> `bronze.{source}_raw`, moving
-    each file to `{source}_raw/records/` -> `_processed_{source}_raw/records/`
+    `f"s3://{bucket}/{source}_raw/{folder}/"` -> `bronze.{source}_raw`, moving
+    each file to `{source}_raw/{folder}/` -> `_processed_{source}_raw/{folder}/`
     only after it's durably committed to Postgres. A future sending system is
-    `build_bronze_asset("<system>")` — no other code changes.
+    `build_bronze_asset("<system>", folder="<entity>")` — no other code changes.
+
+    `folder=None` defers picking the sub-folder to run time: used when the
+    sending system's folder name under `{source}_raw/` isn't known yet (or
+    may not exist yet). Each run looks for exactly one sub-folder that isn't
+    a `_dlt*` bookkeeping folder and uses that; if none exist yet, or more
+    than one candidate is found, the run skips rather than guessing.
     """
     table = f"{source}_raw"
-    records_prefix = f"{source}_raw/records/"
-    processed_prefix = f"_processed_{source}_raw/records/"
 
     @asset(name=f"bronze_{table}")
     def _bronze_asset(
@@ -140,6 +144,25 @@ def build_bronze_asset(source: str) -> AssetsDefinition:
         minio: MinIOResource,
         postgres: PostgresResource,
     ) -> None:
+        if folder is not None:
+            records_prefix = f"{source}_raw/{folder}/"
+        else:
+            base = f"{source}_raw/"
+            candidates = [
+                p for p in minio.list_prefixes(base) if not p[len(base):].startswith("_dlt")
+            ]
+            if not candidates:
+                context.log.info(f"No data folder yet under {base} — skipping")
+                return
+            if len(candidates) > 1:
+                context.log.warning(
+                    f"Ambiguous data folders under {base}: {candidates} — skipping until resolved"
+                )
+                return
+            records_prefix = candidates[0]
+
+        processed_prefix = "_processed_" + records_prefix
+
         keys = minio.list_keys(records_prefix)
         if not keys:
             context.log.info(f"No new files under {records_prefix} — skipping")
@@ -190,6 +213,9 @@ def build_bronze_asset(source: str) -> AssetsDefinition:
             minio.move_to_processed(key, records_prefix, processed_prefix)
             files_processed += 1
             context.log.info(f"{key}: staged {len(flattened)} rows, moved to processed")
+
+        if files_processed:
+            minio.ensure_prefix_marker(records_prefix)
 
         context.add_output_metadata(
             {

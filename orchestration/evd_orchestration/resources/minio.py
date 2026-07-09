@@ -36,3 +36,20 @@ class MinIOResource(ConfigurableResource):
             Key=dest_key,
         )
         client.delete_object(Bucket=self.bucket, Key=key)
+
+    def list_prefixes(self, prefix: str) -> list[str]:
+        """List immediate sub-prefixes ("folders") directly under `prefix`."""
+        client = self.get_client()
+        paginator = client.get_paginator("list_objects_v2")
+        prefixes = []
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix, Delimiter="/"):
+            for common in page.get("CommonPrefixes", []):
+                prefixes.append(common["Prefix"])
+        return prefixes
+
+    def ensure_prefix_marker(self, prefix: str) -> None:
+        """Write a zero-byte object at `prefix` so it stays visible as a
+        folder in MinIO/S3 listings even once all real files under it have
+        been moved out."""
+        client = self.get_client()
+        client.put_object(Bucket=self.bucket, Key=prefix, Body=b"")

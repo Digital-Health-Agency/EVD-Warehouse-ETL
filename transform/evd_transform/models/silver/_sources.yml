@@ -11,3 +11,16 @@ sources:
     tables:
       - name: lims_raw
         description: Raw LIMS records, flattened and staged from MinIO.
+      - name: adam_cases_raw
+        description: Raw ADAM case records, flattened and staged from MinIO.
+      - name: adam_travellers_raw
+        description: Raw ADAM traveller records, flattened and staged from MinIO.
+      - name: cbs_raw
+        description: Raw CBS report records, flattened and staged from MinIO.
+      - name: mdharura_raw
+        description: Raw mDharura signal records, flattened and staged from MinIO.
+      - name: krcs_evd_screening_raw
+        description: >
+          Raw KRCS EVD screening records, flattened and staged from MinIO.
+          Data folder name wasn't known at integration time — the bronze
+          asset discovers it at run time and skips until it appears.

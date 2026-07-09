@@ -5,13 +5,18 @@
 ```
 MinIO (evd bucket)                Postgres                          dbt
 ─────────────────────            ──────────                        ─────
-{source}_raw/records/   ──────►  bronze.{source}_raw   ──────►  silver.*  ──────►  gold.*
+{source}_raw/{folder}/  ──────►  bronze.{source}_raw   ──────►  silver.*  ──────►  gold.*
         │                        (schema inferred,                (typed,           (marts)
         │ move on success        additive evolution,                deduped)
         ▼                        append-only)
 _processed_{source}_raw/
-      records/
+      {folder}/
 ```
+
+`{folder}` is the sending system's actual data sub-folder — not always
+literally `records/` (e.g. `adam_cases_raw/cases/`, `cbs_raw/reports/`). It's
+declared per system when the asset is registered, or, if not yet known,
+discovered at run time (see "MinIO conventions" below).
 
 - **Bronze**: one Postgres table per sending system (`bronze.lims_raw`,
   future `bronze.[system]_raw`), whose columns are *inferred from the JSON
@@ -74,12 +79,24 @@ LIMS (and future) records are nested JSON. Bronze flattens them fully:
 ## MinIO conventions
 
 - Bucket: `evd`.
-- Per sending system: `evd/{source}_raw/records/` — incoming JSON, optionally
-  gzip-compressed (any extension; compression is sniffed, not assumed from
-  the filename).
+- Per sending system: `evd/{source}_raw/{folder}/` — incoming JSON,
+  optionally gzip-compressed (any extension; compression is sniffed, not
+  assumed from the filename). `{folder}` varies per system (`records` for
+  LIMS, `cases`/`travellers` for ADAM, `reports` for CBS, `signals` for
+  mDharura) and is passed explicitly to `build_bronze_asset`. One sending
+  system can own multiple independent raw prefixes/tables (ADAM's `cases`
+  and `travellers` are two separate bronze tables).
+- If a system's folder name isn't known yet, `build_bronze_asset(source,
+  folder=None)` discovers it at run time: it lists the immediate
+  sub-folders under `{source}_raw/`, ignores any `_dlt*` bookkeeping
+  folders (and any flat files sitting directly under the prefix, like an
+  `init` marker, which never show up as sub-folders), and uses the result
+  only if exactly one real candidate exists — otherwise it skips the run
+  rather than guessing (`krcs_evd_screening_raw`, folder unknown at
+  integration time).
 - After a file is durably committed to `bronze.{source}_raw` (insert
   transaction succeeds), it is moved — copy then delete, not just copied — to
-  `evd/_processed_{source}_raw/records/`.
+  `evd/_processed_{source}_raw/{folder}/`.
 - Processing is per-file, not per-batch: if a run fails partway through, files
   already committed are already moved; the next run only sees files that
   truly haven't been staged yet. This makes `records/` itself the worklist —

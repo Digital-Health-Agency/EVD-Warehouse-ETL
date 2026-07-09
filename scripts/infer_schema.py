@@ -21,6 +21,11 @@ from evd_orchestration.resources import DuckDBResource, MinIOResource
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True, help="Sending system, e.g. lims")
+    parser.add_argument(
+        "--folder",
+        default="records",
+        help="Data sub-folder under {source}_raw/, e.g. records, cases, reports",
+    )
     parser.add_argument("--sample", type=int, default=20, help="Max number of files to sample")
     args = parser.parse_args()
 
@@ -36,7 +41,7 @@ def main() -> None:
         s3_secret_key=os.environ["MINIO_ROOT_PASSWORD"],
     )
 
-    prefix = f"{args.source}_raw/records/"
+    prefix = f"{args.source}_raw/{args.folder}/"
     keys = minio.list_keys(prefix)
     if not keys:
         print(f"No files found under s3://{minio.bucket}/{prefix}")

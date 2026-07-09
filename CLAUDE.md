@@ -23,7 +23,7 @@ EVD-Warehouse-ETL/
 │   ├── assets/
 │   │   ├── bronze/
 │   │   │   ├── schema_inference.py  # pure functions — flatten/sanitize/infer/hash
-│   │   │   ├── ingest.py            # build_bronze_asset(source) factory
+│   │   │   ├── ingest.py            # build_bronze_asset(source, folder) factory
 │   │   │   └── lims.py              # bronze_lims_raw = build_bronze_asset("lims")
 │   │   └── transform/                # @dbt_assets wrapping transform/evd_transform
 │   ├── jobs.py, schedules.py, sensors.py
@@ -77,7 +77,22 @@ and the copy+delete move-to-processed step, which DuckDB can't do.
 
 ## Adding a new sending system
 
-1. `assets/bronze/<system>.py`: `bronze_<system>_raw = build_bronze_asset("<system>")`.
+`build_bronze_asset(source, folder)` reads `{source}_raw/{folder}/` in MinIO
+and writes `bronze.{source}_raw`. `folder` is **not** always `"records"` —
+each sending system's actual data sub-folder is whatever the source drops
+files into (e.g. `adam_cases_raw/cases/`, `cbs_raw/reports/`); it's declared
+explicitly per system, not guessed. One sending system can own more than one
+raw prefix/table (ADAM has `adam_cases_raw` and `adam_travellers_raw` — two
+independent bronze tables, no shared code beyond the naming).
+
+If the folder name isn't known yet (or the source hasn't started sending),
+pass `folder=None`: the asset discovers the sub-folder at run time, ignoring
+any `_dlt*` bookkeeping folders, and skips the run if none or more than one
+non-`_dlt*` candidate exists rather than guessing (see
+`bronze_krcs_evd_screening_raw`).
+
+1. `assets/bronze/<system>.py`:
+   `bronze_<system>_raw = build_bronze_asset("<system>", folder="<entity>")`.
 2. Register in `assets/bronze/__init__.py`, `assets/__init__.py`, and
    `jobs.py`'s `ingest_job` selection.
 3. Add `bronze.<system>_raw` as a source in
@@ -115,6 +130,6 @@ point.
 - ❌ dbt models in `gold` referencing `bronze` directly, or `silver`
   referencing anything but `bronze` sources.
 - ❌ Hardcoding MinIO prefixes/table names outside `build_bronze_asset` — the
-  `{source}_raw/records/` ↔ `bronze.{source}_raw` ↔
-  `_processed_{source}_raw/records/` mapping should only ever be derived from
-  the `source` string.
+  `{source}_raw/{folder}/` ↔ `bronze.{source}_raw` ↔
+  `_processed_{source}_raw/{folder}/` mapping should only ever be derived from
+  the `source`/`folder` values passed into the factory.
