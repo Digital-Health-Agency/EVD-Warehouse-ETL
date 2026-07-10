@@ -1,3 +1,6 @@
+{{ config(
+    materialized = 'table'
+) }}
 
 with adam_cases as (
 
@@ -18,7 +21,7 @@ with adam_cases as (
         nullif(trim(health_facility), '') as facility_name,
         null::text as facility_mfl,
 
-        investigation_date as case_date,
+        investigation_date::date as case_date,
         created_at,
 
         nullif(trim(record_type), '') as record_type,
@@ -115,7 +118,7 @@ uhai_cases as (
         null::text as facility_name,
         nullif(trim(facility_id::text), '') as facility_mfl,
 
-        reporting_date as case_date,
+        reporting_date::date as case_date,
         created_at,
 
         'case'::text as record_type,
@@ -311,6 +314,7 @@ deduplicated_cases as (
 
         select
             *,
+
             row_number() over (
                 partition by
                     source_system,
@@ -391,12 +395,12 @@ final as (
         l.location_key,
 
         coalesce(
-            facility_by_mfl.facility_key,
-            facility_by_name.facility_key
+            fm.facility_key,
+            fn.facility_key
         ) as facility_key,
 
-        case_date.date_key as case_date_key,
-        created_date.date_key as created_date_key,
+        cd.date_key as case_date_key,
+        crd.date_key as created_date_key,
 
         c.source_system,
         c.source_record_id,
@@ -427,25 +431,21 @@ final as (
 
     left join location_dimension l
         on lower(trim(coalesce(c.reporting_county, ''))) = l.county
+        and lower(trim(coalesce(c.reporting_subcounty, ''))) = l.subcounty
+        and lower(trim(coalesce(c.ward, ''))) = l.ward
+        and lower(trim(coalesce(c.point_of_entry, ''))) = l.point_of_entry
 
-       and lower(trim(coalesce(c.reporting_subcounty, ''))) = l.subcounty
+    left join facility_by_mfl fm
+        on nullif(trim(c.facility_mfl), '') = fm.mfl_code
 
-       and lower(trim(coalesce(c.ward, ''))) = l.ward
+    left join facility_by_name fn
+        on lower(trim(c.facility_name)) = fn.normalized_facility_name
 
-       and lower(trim(coalesce(c.point_of_entry, ''))) = l.point_of_entry
+    left join {{ ref('dim_date') }} cd
+        on c.case_date = cd.full_date
 
-    left join facility_by_mfl
-        on c.facility_mfl = facility_by_mfl.mfl_code
-
-    left join facility_by_name
-        on lower(trim(c.facility_name)) =
-           facility_by_name.normalized_facility_name
-
-    left join {{ ref('dim_date') }} case_date
-        on c.case_date = case_date.full_date
-
-    left join {{ ref('dim_date') }} created_date
-        on c.created_at::date = created_date.full_date
+    left join {{ ref('dim_date') }} crd
+        on c.created_at::date = crd.full_date
 
 )
 
