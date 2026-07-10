@@ -11,13 +11,25 @@ seed-paths: ["seeds"]
 
 seeds:
   evd_transform:
-    +schema: seeds
+    +schema: silver
 
 models:
   evd_transform:
     silver:
       +materialized: table
       +schema: silver
+    marts:
+      +materialized: table
+      dimensions:
+        +materialized: table
+        +schema: marts
+      facts:
+        +materialized: table
+        +schema: marts
     gold:
       +materialized: table
       +schema: gold
+
+
+
+

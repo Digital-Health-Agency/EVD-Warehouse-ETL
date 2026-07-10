@@ -14,7 +14,9 @@ ingest:
 
 dbt-clean:
 	uv run --env-file .env dbt clean --project-dir transform/evd_transform --profiles-dir transform
-
+	
+dbt-seed:
+	uv run --env-file .env dbt seed --project-dir transform/evd_transform --profiles-dir transform
 dbt-deps:
 	uv run --env-file .env dbt deps --project-dir transform/evd_transform --profiles-dir transform
 
@@ -42,3 +44,5 @@ dbt-dev:
 	uv run --env-file .env dbt build --project-dir transform/evd_transform --profiles-dir transform --target dev
 
 dev: dbt-deps dbt-parse dagster-dev
+
+dbt-refresh: dbt-clean dbt-deps dbt-seed dbt
