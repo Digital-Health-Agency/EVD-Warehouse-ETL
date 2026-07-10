@@ -36,7 +36,7 @@ with source as (
         _raw_hash::text as raw_hash
 
     from {{ ref('slv_lims_results') }}
-
+ 
 ),
 
 deduplicated_source as (

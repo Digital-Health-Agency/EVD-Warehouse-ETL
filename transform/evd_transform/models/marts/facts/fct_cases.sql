@@ -260,6 +260,8 @@ uhai_cases as (
 
     from {{ ref('slv_uhai_cases') }}
 
+    where suspected = 'yes'
+
 ),
 
 unioned_cases as (
