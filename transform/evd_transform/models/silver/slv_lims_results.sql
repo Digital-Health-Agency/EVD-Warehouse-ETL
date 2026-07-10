@@ -4,7 +4,7 @@ with src as (
 
     select *
     from {{ source('bronze', 'lims_raw') }}
-
+    WHERE component_code = '86518-8'
 ),
 
 cleaned as (
