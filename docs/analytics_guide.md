@@ -84,25 +84,152 @@ Dimensions are for filtering and drill-downs; facts provide measures.
 
 ## 5. Gold Reporting Layer
 
-Business-ready datasets that actually exist today:
+Six report models exist today. Not yet built (do not rely on these as API
+endpoints): `report_case_demographics`, `report_case_outcomes`,
+`report_contact_summary`.
 
-- `report_case_summary` — weekly case summary by location/facility/source
-  with suspected/probable/confirmation/testing/sample-collection/recovery/
-  fatality rates.
-- `report_case_trend` — weekly case aggregation plus cumulative totals,
-  4-week moving average, week-over-week change and % change.
-- `report_case_distribution` — combined daily/epiweek case, screening, and
-  lab activity by geography/facility with cross-domain rates.
-- `report_screening_summary` — daily/weekly screening summary by
-  location/facility/classification.
-- `report_laboratory_summary` — weekly/monthly lab result summary by
-  facility/test/specimen with positivity/negative/inconclusive/unknown/
-  completion rates.
-- `report_geographic_summary` — geography-oriented rollup combining cases,
-  screening, and lab activity.
+### `report_case_summary`
 
-Not yet built (do not rely on these as API endpoints): `report_case_
-demographics`, `report_case_outcomes`, `report_contact_summary`.
+Row-level case detail — one row per case from `fct_cases`, with
+location/facility/date surrogate keys resolved to display names. No
+aggregation, no rate metrics; use `report_case_trend` or
+`report_case_distribution` for weekly rollups.
+
+| Column | Description |
+|---|---|
+| `case_key` | Surrogate key for the case (hash of `source_system` + `source_record_id`) |
+| `source_system`, `source_record_id` | Originating system and its record identifier (dedup key) |
+| `system_id`, `identifier_number`, `specimen_id` | Case/patient/specimen identifiers as reported by the source |
+| `case_date_key`, `case_date` | Case date — surrogate key and resolved date |
+| `created_date_key`, `created_date`, `created_at` | Record creation date — surrogate key, resolved date, raw timestamp |
+| `location_key`, `county`, `subcounty`, `ward`, `point_of_entry` | Location surrogate key and resolved attributes |
+| `facility_key`, `mfl_code`, `facility_name` | Facility surrogate key and resolved attributes |
+| `record_type`, `case_classification`, `laboratory_result`, `outcome`, `samples_collected` | Case detail fields as reported |
+| `suspected_flag`, `probable_flag`, `confirmed_flag`, `tested_flag`, `died_flag`, `recovered_flag` | Boolean indicators derived from classification/outcome |
+| `case_count` | Always `1` — row-level counter, sum to get totals |
+| `suspected_case_count`, `probable_case_count`, `confirmed_case_count`, `tested_case_count`, `sample_collected_count`, `recovered_case_count`, `death_count` | `1`/`0` counters mirroring the boolean flags, for summing |
+| `batch_id`, `source_file` | Ingestion lineage — internal use only, never expose via public APIs (§9) |
+
+### `report_case_trend`
+
+Weekly case totals by geography/facility/source/record type, plus
+cumulative and trend analytics (moving average, week-over-week change).
+
+| Column | Description |
+|---|---|
+| `epi_week_key`, `epi_year`, `epi_week`, `epi_week_label`, `start_of_week`, `end_of_week` | Epi-week identifiers and calendar bounds |
+| `county`, `subcounty`, `ward`, `point_of_entry` | Location grouping |
+| `mfl_code`, `facility_name` | Facility grouping |
+| `source_system`, `record_type` | Source and record-type grouping |
+| `total_cases`, `suspected_cases`, `probable_cases`, `confirmed_cases`, `tested_cases`, `samples_collected`, `recovered_cases`, `deaths` | Weekly totals per case category |
+| `cumulative_cases`, `cumulative_confirmed_cases`, `cumulative_deaths` | Year-to-date running totals within the `epi_year`, partitioned by county/subcounty/`mfl_code`/`source_system`/`record_type` |
+| `moving_average_4_week_cases` | Trailing 4-week average of `total_cases` (same partition) |
+| `previous_week_cases` | `total_cases` from the prior epi-week (same partition) |
+| `weekly_case_change` | `total_cases` minus `previous_week_cases` |
+| `weekly_case_change_percentage` | Week-over-week % change |
+| `confirmation_rate` | `confirmed_cases` as % of `total_cases` |
+| `testing_rate` | `tested_cases` as % of `total_cases` |
+| `sample_collection_rate` | `samples_collected` as % of `total_cases` |
+| `recovery_rate` | `recovered_cases` as % of `confirmed_cases` |
+| `case_fatality_rate` | `deaths` as % of `confirmed_cases` |
+
+### `report_case_distribution`
+
+Weekly case totals by the same grouping as `report_case_trend`, with rate
+metrics but without the cumulative/trend columns.
+
+| Column | Description |
+|---|---|
+| `epi_week_key`, `epi_year`, `epi_week`, `epi_week_label`, `start_of_week`, `end_of_week` | Epi-week identifiers and calendar bounds |
+| `county`, `subcounty`, `ward`, `point_of_entry` | Location grouping |
+| `mfl_code`, `facility_name` | Facility grouping |
+| `source_system`, `record_type` | Source and record-type grouping |
+| `total_cases`, `suspected_cases`, `probable_cases`, `confirmed_cases`, `tested_cases`, `samples_collected`, `recovered_cases`, `deaths` | Weekly totals per case category |
+| `suspected_case_rate` | `suspected_cases` as % of `total_cases` |
+| `probable_case_rate` | `probable_cases` as % of `total_cases` |
+| `confirmation_rate` | `confirmed_cases` as % of `total_cases` |
+| `testing_rate` | `tested_cases` as % of `total_cases` |
+| `sample_collection_rate` | `samples_collected` as % of `total_cases` |
+| `recovery_rate` | `recovered_cases` as % of `confirmed_cases` |
+| `case_fatality_rate` | `deaths` as % of `confirmed_cases` |
+
+### `report_screening_summary`
+
+Daily screening activity, enriched with the containing epi-week, by
+geography/facility/source/classification.
+
+| Column | Description |
+|---|---|
+| `screening_date` | Calendar date of the screening |
+| `screening_year`, `screening_month_number`, `screening_month_name` | Date parts derived from `screening_date` |
+| `epi_week_key`, `epi_year`, `epi_week`, `epi_week_label`, `start_of_week`, `end_of_week` | Epi-week `screening_date` falls in |
+| `county`, `subcounty`, `ward`, `point_of_entry` | Location grouping |
+| `mfl_code`, `facility_name` | Facility grouping |
+| `source_system` | Sending system (ADAM travellers, UHAI) |
+| `classification`, `test_result` | Screening classification and test result as reported |
+| `total_screening_records` | Count of screening records in the group |
+| `total_screened` | Count actually screened |
+| `total_suspected` | Count flagged suspected |
+| `total_confirmed` | Count confirmed |
+| `total_tested` | Count tested |
+| `screening_completion_rate` | `total_screened` as % of `total_screening_records` |
+| `suspected_screening_rate` | `total_suspected` as % of `total_screened` |
+| `testing_rate` | `total_tested` as % of `total_suspected` |
+| `positivity_rate` | `total_confirmed` as % of `total_tested` |
+| `confirmed_screening_rate` | `total_confirmed` as % of `total_screened` |
+
+### `report_laboratory_summary`
+
+Weekly + monthly lab result totals by facility/test attributes.
+
+| Column | Description |
+|---|---|
+| `epi_week_key`, `epi_year`, `epi_week`, `epi_week_label`, `start_of_week`, `end_of_week` | Epi-week (from result date, falling back to collection date) |
+| `result_year`, `result_month_number`, `result_month_name` | Date parts derived from result date |
+| `county`, `subcounty` | Facility's location (from `dim_facilitylist`) |
+| `mfl_code`, `facility_name` | Facility grouping |
+| `source_system` | Sending system (LIMS) |
+| `specimen_type` | Type of specimen tested |
+| `loinc_code`, `test_name`, `code_text`, `component_code` | Test naming/coding attributes |
+| `unit` | Result unit of measure |
+| `result_category` | Categorized result (Positive/Negative/Inconclusive/Unknown/Other) |
+| `total_tests` | Count of tests in the group |
+| `positive_tests`, `negative_tests`, `inconclusive_tests`, `unknown_tests`, `other_tests` | Counts by result category |
+| `positivity_rate` | `positive_tests` as % of (positive + negative + inconclusive) tests |
+| `negative_rate` | `negative_tests` as % of `total_tests` |
+| `inconclusive_rate` | `inconclusive_tests` as % of `total_tests` |
+| `unknown_result_rate` | `unknown_tests` as % of `total_tests` |
+| `result_completion_rate` | (positive + negative + inconclusive) as % of `total_tests` |
+
+### `report_geographic_summary`
+
+Daily activity combining cases, screening, and lab results into one
+geography/facility-oriented table (each domain unioned in, not joined —
+see note below).
+
+| Column | Description |
+|---|---|
+| `activity_date` | Calendar date of the activity (case, screening, or lab) |
+| `activity_year`, `activity_month_number`, `activity_month_name` | Date parts derived from `activity_date` |
+| `epi_week_key`, `epi_year`, `epi_week`, `epi_week_label`, `start_of_week`, `end_of_week` | Epi-week `activity_date` falls in |
+| `county`, `subcounty`, `ward`, `point_of_entry` | Location grouping (`ward`/`point_of_entry` are null on lab-only rows) |
+| `mfl_code`, `facility_name` | Facility grouping |
+| `total_cases`, `confirmed_cases`, `tested_cases`, `deaths` | Case-domain totals (`0` on screening/lab-only rows) |
+| `total_screening_records`, `total_screened`, `suspected_screenings`, `confirmed_screenings`, `tested_screenings` | Screening-domain totals (`0` on case/lab-only rows) |
+| `laboratory_tests`, `positive_tests`, `negative_tests`, `inconclusive_tests` | Lab-domain totals (`0` on case/screening-only rows) |
+| `confirmation_rate` | `confirmed_cases` as % of `total_cases` |
+| `case_testing_rate` | `tested_cases` as % of `total_cases` |
+| `case_fatality_rate` | `deaths` as % of `confirmed_cases` |
+| `suspected_screening_rate` | `suspected_screenings` as % of `total_screened` |
+| `screening_testing_rate` | `tested_screenings` as % of `suspected_screenings` |
+| `screening_positivity_rate` | `confirmed_screenings` as % of `tested_screenings` |
+| `laboratory_positivity_rate` | `positive_tests` as % of (positive + negative + inconclusive) tests |
+
+Note: cases, screening, and lab activity are combined with `UNION ALL` by
+date/geography/facility, not joined — a given row typically has non-zero
+values in only one domain's columns. Aggregate across rows (e.g. `sum(...)
+group by county, epi_week`) to get a true cross-domain total for a
+geography/week.
 
 ## 6. API Consumption Guidelines
 
