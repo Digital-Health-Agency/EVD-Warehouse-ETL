@@ -1,6 +1,3 @@
-{{ config(
-    materialized = 'table'
-) }}
 
 with case_activity as (
 

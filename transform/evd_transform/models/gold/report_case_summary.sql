@@ -1,6 +1,4 @@
-{{ config(
-    materialized = 'table'
-) }}
+
 
 with cases as (
 

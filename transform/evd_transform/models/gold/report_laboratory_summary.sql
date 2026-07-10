@@ -1,6 +1,3 @@
-{{ config(
-    materialized = 'table'
-) }}
 
 with laboratory_facts as (
 
