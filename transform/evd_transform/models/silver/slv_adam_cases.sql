@@ -3,7 +3,6 @@ with src as (
 
     select *
     from {{ source('bronze', 'adam_cases_raw') }}
-
 ),
 
 cleaned as (
