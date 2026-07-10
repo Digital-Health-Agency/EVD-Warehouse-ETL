@@ -1,6 +1,6 @@
 # EVD Warehouse ETL
 
-MinIO → Postgres (`bronze` → `silver` → `gold`). Full design:
+MinIO → Postgres (`bronze` → `silver` → `marts` → `gold`). Full design:
 [`docs/architecture.md`](docs/architecture.md).
 
 ## Scope
@@ -28,7 +28,7 @@ EVD-Warehouse-ETL/
 │   │   └── transform/                # @dbt_assets wrapping transform/evd_transform
 │   ├── jobs.py, schedules.py, sensors.py
 │   └── tools/migrate.py             # runs infra/postgres/init.sql
-├── transform/evd_transform/         # dbt project: models/{silver,gold}
+├── transform/evd_transform/         # dbt project: models/{silver,marts,gold}
 ├── scripts/infer_schema.py          # dry-run: sample MinIO, print inferred schema
 └── tests/                           # pytest, pure schema-inference logic only
 ```
@@ -109,8 +109,9 @@ point.
 
 ## dbt layering
 
-- `silver` sources `bronze` directly; `gold` only refs `silver` — no
-  layer-skipping.
+- `silver` sources `bronze` directly (`source()`); `marts`
+  (`models/marts/{dimensions,facts}`) refs `silver`; `gold` refs `marts`
+  only — no layer-skipping anywhere in the chain.
 - One dbt model per meaningful entity per source
   (`silver_<source>__<entity>.sql`), not one giant passthrough — the current
   `silver_lims__raw.sql` is an explicit placeholder to be replaced once real
@@ -133,8 +134,9 @@ point.
   mirrors source shape, nothing more.
 - ❌ `ALTER COLUMN TYPE` on a bronze table, ever.
 - ❌ Updating/deleting bronze rows in place — corrections are new batches.
-- ❌ dbt models in `gold` referencing `bronze` directly, or `silver`
-  referencing anything but `bronze` sources.
+- ❌ dbt models in `gold` referencing `silver` or `bronze` directly (must go
+  through `marts`), `marts` referencing `bronze` directly (must go through
+  `silver`), or `silver` referencing anything but `bronze` sources.
 - ❌ Hardcoding MinIO prefixes/table names outside `build_bronze_asset` — the
   `{source}_raw/{folder}/` ↔ `bronze.{source}_raw` ↔
   `_processed_{source}_raw/{folder}/` mapping should only ever be derived from

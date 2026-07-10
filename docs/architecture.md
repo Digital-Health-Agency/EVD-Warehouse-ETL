@@ -5,9 +5,9 @@
 ```
 MinIO (evd bucket)                Postgres                          dbt
 ─────────────────────            ──────────                        ─────
-{source}_raw/{folder}/  ──────►  bronze.{source}_raw   ──────►  silver.*  ──────►  gold.*
-        │                        (schema inferred,                (typed,           (marts)
-        │ move on success        additive evolution,                deduped)
+{source}_raw/{folder}/  ──────►  bronze.{source}_raw   ──────►  silver.*  ──────►  marts.*  ──────►  gold.*
+        │                        (schema inferred,                (typed,           (dims/facts,      (reports)
+        │ move on success        additive evolution,                deduped)         star schema)
         ▼                        append-only)
 _processed_{source}_raw/
       {folder}/
@@ -26,8 +26,14 @@ discovered at run time (see "MinIO conventions" below).
 - **Silver**: dbt models that cast bronze's TEXT-only columns to real types,
   dedupe, and drop irrelevant envelope columns — one model per meaningful
   entity per source.
-- **Gold**: dbt models that join/aggregate silver into consumption-ready
-  marts. Deferred until silver's shape is validated against real data.
+- **Marts** (schema `marts`): dbt dimension and fact models
+  (`models/marts/{dimensions,facts}`) that conform silver into a star
+  schema — dimensions are shared across facts (date, epiweek, location,
+  facility list, lab test), facts union/dedupe silver records per domain
+  (cases, screening, lab results).
+- **Gold** (schema `gold`): dbt report models that join marts facts and
+  dimensions into business-ready, dashboard/API-consumption datasets. Built
+  only on `marts` — never directly on `silver` or `bronze`.
 
 ## Why bronze isn't hand-modeled
 
@@ -135,7 +141,8 @@ keys under a prefix, and the copy+delete "move to processed" step.
 ## dbt layering
 
 - `silver` sources `bronze` directly (`{{ source('bronze', 'lims_raw') }}`);
-  `gold` only refs `silver` models — no layer-skipping, same rule as the
+  `marts` (`dimensions`/`facts`) refs only `silver` models; `gold` refs only
+  `marts` models — no layer-skipping anywhere in the chain, same rule as the
   sibling `eth` project.
 - Adding a new bronze source means adding one line to
   `models/silver/_sources.yml`, not restructuring anything.
@@ -144,8 +151,13 @@ keys under a prefix, and the copy+delete "move to processed" step.
 
 ## Deferred / open
 
-- **Gold mart SQL** — scaffolded (`models/gold/`, dbt config) but not written;
-  depends on what real LIMS data actually looks like.
+- **Gold mart SQL** — built: 5 dimension models (`dim_date`, `dim_epiweek`,
+  `dim_location`, `dim_facilitylist`, `dim_labtest`), 4 fact models
+  (`fct_cases`, `fct_screening`, `fct_lab_result`, `fct_contact`), and 6 gold
+  report models (`models/gold/`). One known gap: `fct_contact.sql` currently
+  duplicates `fct_cases.sql`'s union/dedup logic rather than implementing
+  real contact-tracing joins — a placeholder until contact-tracing source
+  data exists, not yet a distinct model.
 - **Roles/grants** (`bronze_rw`, `superset_ro`, ...) — not created yet; no
   BI/Superset wiring has been requested for this repo.
 - **`_processed` flag** — column exists (matching the sibling `eth`
