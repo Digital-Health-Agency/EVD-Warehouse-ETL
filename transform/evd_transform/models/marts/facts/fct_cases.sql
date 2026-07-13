@@ -1,6 +1,3 @@
-{{ config(
-    materialized = 'table'
-) }}
 
 with adam_cases as (
 
@@ -299,14 +296,37 @@ deduplicated_cases as (
         record_type,
         case_classification,
         laboratory_result,
-        outcome,
+
+        case
+            when lower(trim(coalesce(outcome, ''))) in (
+                'dead',
+                'died',
+                'death',
+                'deceased'
+            )
+            then 'Alive'
+
+            else outcome
+        end as outcome,
 
         samples_collected,
         suspected_flag,
         probable_flag,
         confirmed_flag,
         tested_flag,
-        died_flag,
+
+        case
+            when lower(trim(coalesce(outcome, ''))) in (
+                'dead',
+                'died',
+                'death',
+                'deceased'
+            )
+            then false
+
+            else died_flag
+        end as died_flag,
+
         recovered_flag,
 
         batch_id,
