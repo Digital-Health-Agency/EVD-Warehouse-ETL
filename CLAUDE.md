@@ -82,8 +82,20 @@ and writes `bronze.{source}_raw`. `folder` is **not** always `"records"` —
 each sending system's actual data sub-folder is whatever the source drops
 files into (e.g. `adam_cases_raw/cases/`, `cbs_raw/reports/`); it's declared
 explicitly per system, not guessed. One sending system can own more than one
-raw prefix/table (ADAM has `adam_cases_raw` and `adam_travellers_raw` — two
-independent bronze tables, no shared code beyond the naming).
+raw prefix/table — two different patterns depending on the MinIO topology:
+
+- **Separate top-level prefixes** (ADAM: `adam_cases_raw/` and
+  `adam_travellers_raw/` are genuinely distinct prefixes) — give each folder
+  its own `source` value, and each can live in its own file
+  (`adam_cases.py`, `adam_travellers.py`); table/asset names fall out of
+  `source` with no collision.
+- **Sibling folders under one existing prefix** (CBS: `cbs_raw/reports/` and
+  `cbs_raw/screenings/` share the same `cbs_raw/` prefix) — `source` must
+  stay the same for both so the MinIO read path is correct, so table/asset
+  naming needs the `table=` override instead:
+  `build_bronze_asset("cbs", folder="screenings", table="cbs_screenings_raw")`.
+  Add each new sibling folder as another call in the *same* source file
+  (`cbs.py`), not a new file.
 
 If the folder name isn't known yet (or the source hasn't started sending),
 pass `folder=None`: the asset discovers the sub-folder at run time, ignoring
@@ -92,7 +104,9 @@ non-`_dlt*` candidate exists rather than guessing (see
 `bronze_krcs_evd_screening_raw`).
 
 1. `assets/bronze/<system>.py`:
-   `bronze_<system>_raw = build_bronze_asset("<system>", folder="<entity>")`.
+   `bronze_<system>_raw = build_bronze_asset("<system>", folder="<entity>")`
+   (add a `table=` override if it's a sibling folder under an existing
+   source's prefix, per above).
 2. Register in `assets/bronze/__init__.py`, `assets/__init__.py`,
    `jobs.py`'s `ingest_job` selection, **and** `evd_orchestration/__init__.py`
    — both the import list and the `Definitions(assets=[...])` list. This last
@@ -104,8 +118,10 @@ non-`_dlt*` candidate exists rather than guessing (see
 3. Add `bronze.<system>_raw` as a source in
    `transform/evd_transform/models/silver/_sources.yml`.
 
-No changes to `schema_inference.py` or `ingest.py` — the factory is the whole
-point.
+No changes to `schema_inference.py` needed, and `ingest.py` only ever grows
+generic factory parameters like `folder` and `table` — never source-specific
+logic. The factory (plus its `table=` override for the shared-prefix case) is
+the whole point.
 
 ## dbt layering
 

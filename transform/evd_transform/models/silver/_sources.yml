@@ -17,6 +17,11 @@ sources:
         description: Raw ADAM traveller records, flattened and staged from MinIO.
       - name: cbs_raw
         description: Raw CBS report records, flattened and staged from MinIO.
+      - name: cbs_screenings_raw
+        description: >
+          Raw CBS screening records, flattened and staged from MinIO. Sibling
+          data folder to cbs_raw (reports) under the same cbs_raw/ MinIO
+          prefix, staged into its own bronze table.
       - name: mdharura_raw
         description: Raw mDharura signal records, flattened and staged from MinIO.
       - name: krcs_evd_screening_raw

@@ -126,7 +126,9 @@ def _insert_rows(cursor, table: str, columns: list[str], rows: list[tuple]) -> i
     return cursor.rowcount
 
 
-def build_bronze_asset(source: str, folder: str | None = "records") -> AssetsDefinition:
+def build_bronze_asset(
+    source: str, folder: str | None = "records", table: str | None = None
+) -> AssetsDefinition:
     """Factory: one Dagster asset per sending system.
 
     `f"s3://{bucket}/{source}_raw/{folder}/"` -> `bronze.{source}_raw`, moving
@@ -139,8 +141,13 @@ def build_bronze_asset(source: str, folder: str | None = "records") -> AssetsDef
     may not exist yet). Each run looks for exactly one sub-folder that isn't
     a `_dlt*` bookkeeping folder and uses that; if none exist yet, or more
     than one candidate is found, the run skips rather than guessing.
+
+    `table` overrides the derived `{source}_raw` table/asset name — use it
+    when a second folder is a sibling under an *existing* source's top-level
+    prefix (e.g. `cbs_raw/screenings/` alongside `cbs_raw/reports/`) and needs
+    its own table without colliding with the first folder's asset.
     """
-    table = f"{source}_raw"
+    table = table or f"{source}_raw"
 
     @asset(name=f"bronze_{table}")
     def _bronze_asset(
