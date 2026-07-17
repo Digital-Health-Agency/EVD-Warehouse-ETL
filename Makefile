@@ -19,6 +19,8 @@ dbt-seed:
 	uv run --env-file .env dbt seed --project-dir transform/evd_transform --profiles-dir transform
 dbt-deps:
 	uv run --env-file .env dbt deps --project-dir transform/evd_transform --profiles-dir transform
+dbt-run:
+	uv run --env-file .env dbt run --project-dir transform/evd_transform --profiles-dir transform --select $(MODEL)
 
 dbt:
 	uv run --env-file .env dbt build --project-dir transform/evd_transform --profiles-dir transform
