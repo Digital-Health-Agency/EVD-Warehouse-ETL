@@ -29,7 +29,13 @@ sources:
           Raw KRCS EVD screening records, flattened and staged from MinIO.
           Data folder name wasn't known at integration time — the bronze
           asset discovers it at run time and skips until it appears.
+      - name: krcs_evd_quarantine_raw
+        description: Raw KRCS EVD quarantine records, flattened and staged from MinIO.
       - name: echis_raw
         description: Raw eCHIS signal records, flattened and staged from MinIO.
       - name: uhai_raw
         description: Raw UHAI traveler screening records, flattened and staged from MinIO.
+      - name: taifa_care_kenyaemr_raw
+        description: >
+          Raw Taifa Care KenyaEMR flagged case records, flattened and staged
+          from MinIO.
