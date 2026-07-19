@@ -1,3 +1,5 @@
+
+
 with adam_source as (
 
     select
@@ -47,6 +49,7 @@ adam_deduplicated as (
                 partition by
                     coalesce(
                         nullif(trim(id_field), ''),
+                        nullif(trim(identifier), ''),
                         cast(id as text)
                     )
 
@@ -66,12 +69,18 @@ adam_deduplicated as (
 adam_screenings as (
 
     select
-        'ADAM'::text as source_system,
+        'ADAM'::text
+            as source_system,
 
-        id as source_row_id,
+        'TRAVELLER'::text
+            as surveillance_pathway,
+
+        id
+            as source_row_id,
 
         coalesce(
             nullif(trim(id_field), ''),
+            nullif(trim(identifier), ''),
             cast(id as text)
         ) as source_record_id,
 
@@ -81,8 +90,10 @@ adam_screenings as (
         nullif(trim(identifier), '')
             as source_person_identifier,
 
-        cast(created_timestamp as date)
-            as screening_date,
+        (
+            created_timestamp
+            at time zone 'Africa/Nairobi'
+        )::date as screening_date,
 
         created_timestamp
             as screening_datetime,
@@ -90,8 +101,12 @@ adam_screenings as (
         nullif(trim(point_of_entry), '')
             as point_of_entry,
 
-        lower(nullif(trim(point_of_entry), ''))
-            as point_of_entry_normalized,
+        lower(
+            nullif(
+                trim(point_of_entry),
+                ''
+            )
+        ) as point_of_entry_normalized,
 
         nullif(trim(classification), '')
             as source_classification,
@@ -109,19 +124,8 @@ adam_screenings as (
             else upper(trim(classification))
         end as screening_outcome,
 
-        1::integer as screening_count,
-
-        case
-            when lower(trim(classification)) = 'suspected'
-                then 1
-            else 0
-        end::integer as suspected_flag,
-
-        case
-            when lower(trim(classification)) = 'probable'
-                then 1
-            else 0
-        end::integer as probable_flag,
+        1::integer
+            as screening_count,
 
         case
             when nullif(trim(classification), '') is null
@@ -138,29 +142,66 @@ adam_screenings as (
             else 0
         end::integer as flagged_flag,
 
+        case
+            when lower(trim(classification)) = 'suspected'
+                then 1
+            else 0
+        end::integer as suspected_flag,
+
+        case
+            when lower(trim(classification)) = 'probable'
+                then 1
+            else 0
+        end::integer as probable_flag,
+
         latitude,
         longitude,
 
-        _ingested_at as ingested_at,
-        _batch_id as batch_id,
-        _source_file as source_file
+        _ingested_at
+            as ingested_at,
+
+        _batch_id
+            as batch_id,
+
+        _source_file
+            as source_file
 
     from adam_deduplicated
 
 ),
 
 /*
-Future sources must return the same canonical columns.
+Future screening sources must return the same canonical columns.
 
 uhai_screenings as (
 
     select
+        'UHAI'::text as source_system,
+        'TRAVELLER'::text as surveillance_pathway,
         ...
 ),
 
-emr_screenings as (
+community_screenings as (
 
     select
+        'MDHARURA'::text as source_system,
+        'COMMUNITY'::text as surveillance_pathway,
+        ...
+),
+
+contact_screenings as (
+
+    select
+        'ADAM'::text as source_system,
+        'CONTACT'::text as surveillance_pathway,
+        ...
+),
+
+facility_screenings as (
+
+    select
+        'EMR'::text as source_system,
+        'FACILITY'::text as surveillance_pathway,
         ...
 )
 */
@@ -179,7 +220,17 @@ unioned_screenings as (
     union all
 
     select *
-    from emr_screenings
+    from community_screenings
+
+    union all
+
+    select *
+    from contact_screenings
+
+    union all
+
+    select *
+    from facility_screenings
     */
 
 ),
@@ -189,6 +240,7 @@ final as (
     select
         {{ dbt_utils.generate_surrogate_key([
             's.source_system',
+            's.surveillance_pathway',
             's.source_record_id'
         ]) }} as screening_key,
 
@@ -206,6 +258,8 @@ final as (
         ) as point_of_entry_key,
 
         s.source_system,
+        s.surveillance_pathway,
+
         s.source_row_id,
         s.source_record_id,
 
@@ -221,6 +275,7 @@ final as (
         s.screening_outcome,
 
         s.screening_count,
+
         s.normal_flag,
         s.flagged_flag,
         s.suspected_flag,

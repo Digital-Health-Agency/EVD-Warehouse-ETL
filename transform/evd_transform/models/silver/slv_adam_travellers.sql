@@ -1,5 +1,3 @@
-
-
 with source_data as (
 
     select
@@ -42,14 +40,21 @@ cleaned as (
         nullif(trim(sex), '') as sex,
 
         case
-            when nullif(trim(date_of_birth), '') is null then null
+            when nullif(trim(date_of_birth), '') is null
+                then null
 
             when trim(date_of_birth)
                     ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
-                 and substring(trim(date_of_birth), 1, 4)::integer
-                     between 1 and 9999
+                 and substring(
+                     trim(date_of_birth),
+                     1,
+                     4
+                 )::integer between 1 and 9999
                  and to_char(
-                     to_date(trim(date_of_birth), 'YYYY-MM-DD'),
+                     to_date(
+                         trim(date_of_birth),
+                         'YYYY-MM-DD'
+                     ),
                      'YYYY-MM-DD'
                  ) = trim(date_of_birth)
                 then to_date(
@@ -59,10 +64,15 @@ cleaned as (
 
             when trim(date_of_birth)
                     ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}$'
-                 and right(trim(date_of_birth), 4)::integer
-                     between 1 and 9999
+                 and right(
+                     trim(date_of_birth),
+                     4
+                 )::integer between 1 and 9999
                  and to_char(
-                     to_date(trim(date_of_birth), 'DD/MM/YYYY'),
+                     to_date(
+                         trim(date_of_birth),
+                         'DD/MM/YYYY'
+                     ),
                      'DD/MM/YYYY'
                  ) = trim(date_of_birth)
                 then to_date(
@@ -83,81 +93,40 @@ cleaned as (
                 'true',
                 '1',
                 'y'
-            ) then true
+            )
+                then true
 
             when lower(trim(screened)) in (
                 'no',
                 'false',
                 '0',
                 'n'
-            ) then false
+            )
+                then false
 
             else null
         end as screened,
 
         nullif(trim(point_of_entry), '') as point_of_entry,
 
+        /*
+         * ADAM traveller timestamps are ISO-8601 timestamps
+         * with a timezone suffix, for example:
+         *
+         * 2026-07-14T23:09:38.031000+00
+         *
+         * Preserve the source instant as timestamptz.
+         */
         case
-            when nullif(trim(created_timestamp), '') is null then null
+            when nullif(trim(created_timestamp), '') is null
+                then null
 
-            when trim(created_timestamp)
-                    ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
-                 and substring(
-                     trim(created_timestamp),
-                     1,
-                     4
-                 )::integer between 1 and 9999
-                 and to_char(
-                     to_date(
-                         trim(created_timestamp),
-                         'YYYY-MM-DD'
-                     ),
-                     'YYYY-MM-DD'
-                 ) = trim(created_timestamp)
-                then to_date(
-                    trim(created_timestamp),
-                    'YYYY-MM-DD'
-                )::timestamp
-
-            when trim(created_timestamp)
-                    ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}$'
-                 and substring(
-                     trim(created_timestamp),
-                     1,
-                     4
-                 )::integer between 1 and 9999
-                then to_timestamp(
-                    replace(
-                        trim(created_timestamp),
-                        'T',
-                        ' '
-                    ),
-                    'YYYY-MM-DD HH24:MI:SS'
-                )
-
-            when trim(created_timestamp)
-                    ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}$'
-                 and right(
-                     trim(created_timestamp),
-                     4
-                 )::integer between 1 and 9999
-                 and to_char(
-                     to_date(
-                         trim(created_timestamp),
-                         'DD/MM/YYYY'
-                     ),
-                     'DD/MM/YYYY'
-                 ) = trim(created_timestamp)
-                then to_date(
-                    trim(created_timestamp),
-                    'DD/MM/YYYY'
-                )::timestamp
-
-            else null
+            else trim(created_timestamp)::timestamptz
         end as created_timestamp,
 
         case
-            when nullif(trim(latitude), '') is null then null
+            when nullif(trim(latitude), '') is null
+                then null
 
             when trim(latitude)
                     ~ '^-?[0-9]+(\.[0-9]+)?$'
@@ -169,7 +138,8 @@ cleaned as (
         end as latitude,
 
         case
-            when nullif(trim(longitude), '') is null then null
+            when nullif(trim(longitude), '') is null
+                then null
 
             when trim(longitude)
                     ~ '^-?[0-9]+(\.[0-9]+)?$'
@@ -190,7 +160,11 @@ ranked as (
         *,
 
         row_number() over (
-            partition by id_field
+            partition by coalesce(
+                nullif(trim(id_field), ''),
+                nullif(trim(identifier), ''),
+                id::text
+            )
             order by
                 _ingested_at desc nulls last,
                 id desc
