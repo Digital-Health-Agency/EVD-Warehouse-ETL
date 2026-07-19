@@ -1,9 +1,9 @@
-{{ config(materialized='table') }}
+
 
 with source as (
 
     select
-        nullif(trim(loinc_code), '') as loinc_code,
+        nullif(trim(code), '') as test_code,
         nullif(trim(test_name), '') as test_name,
         nullif(trim(code_text), '') as code_text,
         nullif(trim(component_code), '') as component_code,
@@ -14,10 +14,10 @@ with source as (
 
 ),
 
-deduplicated as (
+valid_tests as (
 
-    select distinct
-        loinc_code,
+    select
+        test_code,
         test_name,
         code_text,
         component_code,
@@ -26,22 +26,64 @@ deduplicated as (
 
     from source
 
-    where loinc_code is not null
+    where test_code is not null
        or test_name is not null
+       or component_code is not null
+
+),
+
+ranked as (
+
+    select
+        *,
+
+        row_number() over (
+            partition by
+                lower(coalesce(test_code, '')),
+                lower(coalesce(test_name, '')),
+                lower(coalesce(component_code, '')),
+                lower(coalesce(specimen_type, '')),
+                lower(coalesce(unit, ''))
+            order by
+                case
+                    when code_text is not null then 0
+                    else 1
+                end,
+                code_text
+        ) as row_number
+
+    from valid_tests
+
+),
+
+deduplicated as (
+
+    select
+        test_code,
+        test_name,
+        code_text,
+        component_code,
+        specimen_type,
+        unit
+
+    from ranked
+
+    where row_number = 1
 
 ),
 
 final as (
 
     select
-
         {{ dbt_utils.generate_surrogate_key([
-            'loinc_code',
+            'test_code',
             'test_name',
-            'specimen_type'
+            'component_code',
+            'specimen_type',
+            'unit'
         ]) }} as labtest_key,
 
-        loinc_code,
+        test_code,
         test_name,
         code_text,
         component_code,
