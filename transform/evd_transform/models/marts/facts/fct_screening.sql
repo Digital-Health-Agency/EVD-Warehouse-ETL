@@ -1,270 +1,246 @@
-
-
-with adam_screening as (
+with adam_source as (
 
     select
-        'ADAM'::text as source_system,
-        cast(system_id as text) as source_record_id,
+        id,
+        _ingested_at,
+        _source,
+        _batch_id,
+        _source_file,
 
-        cast(null as text) as facility_id,
-
-        cast(null as text) as reporting_county,
-        cast(null as text) as reporting_subcounty,
-        cast(null as text) as ward,
-        nullif(trim(point_of_entry), '') as point_of_entry,
-
-        cast(created_at as date) as screening_date,
-        created_at as screening_datetime,
-
-        screened as is_screened,
-
-        case
-            when lower(trim(suspected_classification)) in (
-                'suspected',
-                'probable',
-                'confirmed'
-            ) then true
-
-            when lower(trim(suspected_classification)) in (
-                'not suspected',
-                'negative',
-                'no',
-                'false',
-                '0'
-            ) then false
-
-            else null
-        end as is_suspected,
-
-        case
-            when lower(trim(suspected_classification)) = 'confirmed'
-                then true
-
-            when suspected_classification is not null
-                then false
-
-            else null
-        end as is_confirmed,
-
-        cast(null as boolean) as is_tested,
-        cast(null as text) as test_result,
-
-        nullif(trim(suspected_classification), '') as classification
+        id_field,
+        name,
+        identifier,
+        classification,
+        point_of_entry,
+        created_timestamp,
+        latitude,
+        longitude
 
     from {{ ref('slv_adam_travellers') }}
 
 ),
 
-uhai_screening as (
+adam_deduplicated as (
 
     select
-        'UHAI'::text as source_system,
-        cast(system_id as text) as source_record_id,
+        id,
+        _ingested_at,
+        _source,
+        _batch_id,
+        _source_file,
 
-        cast(facility_id as text) as facility_id,
+        id_field,
+        name,
+        identifier,
+        classification,
+        point_of_entry,
+        created_timestamp,
+        latitude,
+        longitude
 
-        nullif(trim(reporting_county), '') as reporting_county,
-        nullif(trim(reporting_subcounty), '') as reporting_subcounty,
-        nullif(trim(ward), '') as ward,
-        nullif(trim(point_of_entry), '') as point_of_entry,
+    from (
 
-        reporting_date as screening_date,
+        select
+            *,
 
-        coalesce(
-            created_at,
-            cast(reporting_date as timestamp)
-        ) as screening_datetime,
+            row_number() over (
+                partition by
+                    coalesce(
+                        nullif(trim(id_field), ''),
+                        cast(id as text)
+                    )
 
-        case
-            when lower(trim(screening)) in (
-                'yes',
-                'true',
-                '1',
-                'screened'
-            ) then true
+                order by
+                    _ingested_at desc nulls last,
+                    id desc
+            ) as row_number
 
-            when lower(trim(screening)) in (
-                'no',
-                'false',
-                '0',
-                'not screened'
-            ) then false
+        from adam_source
 
-            else null
-        end as is_screened,
+    ) ranked
 
-        case
-            when lower(trim(suspected)) in (
-                'yes',
-                'true',
-                '1',
-                'suspected'
-            ) then true
-
-            when lower(trim(suspected)) in (
-                'no',
-                'false',
-                '0',
-                'not suspected'
-            ) then false
-
-            else null
-        end as is_suspected,
-
-        case
-            when lower(trim(confirmed)) in (
-                'yes',
-                'true',
-                '1',
-                'confirmed',
-                'positive'
-            ) then true
-
-            when lower(trim(confirmed)) in (
-                'no',
-                'false',
-                '0',
-                'not confirmed',
-                'negative'
-            ) then false
-
-            else null
-        end as is_confirmed,
-
-        case
-            when lower(trim(tested)) in (
-                'yes',
-                'true',
-                '1',
-                'tested'
-            ) then true
-
-            when lower(trim(tested)) in (
-                'no',
-                'false',
-                '0',
-                'not tested'
-            ) then false
-
-            else null
-        end as is_tested,
-
-        nullif(trim(result), '') as test_result,
-
-        case
-            when lower(trim(confirmed)) in (
-                'yes',
-                'true',
-                '1',
-                'confirmed',
-                'positive'
-            ) then 'Confirmed'
-
-            when lower(trim(suspected)) in (
-                'yes',
-                'true',
-                '1',
-                'suspected'
-            ) then 'Suspected'
-
-            else null
-        end as classification
-
-    from {{ ref('slv_uhai_cases') }}
+    where row_number = 1
 
 ),
 
-combined as (
+adam_screenings as (
 
-    select * from adam_screening
+    select
+        'ADAM'::text as source_system,
+
+        id as source_row_id,
+
+        coalesce(
+            nullif(trim(id_field), ''),
+            cast(id as text)
+        ) as source_record_id,
+
+        nullif(trim(name), '')
+            as source_person_name,
+
+        nullif(trim(identifier), '')
+            as source_person_identifier,
+
+        cast(created_timestamp as date)
+            as screening_date,
+
+        created_timestamp
+            as screening_datetime,
+
+        nullif(trim(point_of_entry), '')
+            as point_of_entry,
+
+        lower(nullif(trim(point_of_entry), ''))
+            as point_of_entry_normalized,
+
+        nullif(trim(classification), '')
+            as source_classification,
+
+        case
+            when lower(trim(classification)) = 'suspected'
+                then 'SUSPECTED'
+
+            when lower(trim(classification)) = 'probable'
+                then 'PROBABLE'
+
+            when nullif(trim(classification), '') is null
+                then 'NORMAL'
+
+            else upper(trim(classification))
+        end as screening_outcome,
+
+        1::integer as screening_count,
+
+        case
+            when lower(trim(classification)) = 'suspected'
+                then 1
+            else 0
+        end::integer as suspected_flag,
+
+        case
+            when lower(trim(classification)) = 'probable'
+                then 1
+            else 0
+        end::integer as probable_flag,
+
+        case
+            when nullif(trim(classification), '') is null
+                then 1
+            else 0
+        end::integer as normal_flag,
+
+        case
+            when lower(trim(classification)) in (
+                'suspected',
+                'probable'
+            )
+                then 1
+            else 0
+        end::integer as flagged_flag,
+
+        latitude,
+        longitude,
+
+        _ingested_at as ingested_at,
+        _batch_id as batch_id,
+        _source_file as source_file
+
+    from adam_deduplicated
+
+),
+
+/*
+Future sources must return the same canonical columns.
+
+uhai_screenings as (
+
+    select
+        ...
+),
+
+emr_screenings as (
+
+    select
+        ...
+)
+*/
+
+unioned_screenings as (
+
+    select *
+    from adam_screenings
+
+    /*
+    union all
+
+    select *
+    from uhai_screenings
 
     union all
 
-    select * from uhai_screening
-
-),
-
-locations as (
-
-    select
-        location_key,
-        county,
-        subcounty,
-        ward,
-        point_of_entry
-
-    from {{ ref('dim_location') }}
-
-),
-
-facilities as (
-
-    select
-        facility_key,
-        cast(mfl_code as text) as mfl_code
-
-    from {{ ref('dim_facilitylist') }}
+    select *
+    from emr_screenings
+    */
 
 ),
 
 final as (
 
     select
-        l.location_key,
-        f.facility_key,
+        {{ dbt_utils.generate_surrogate_key([
+            's.source_system',
+            's.source_record_id'
+        ]) }} as screening_key,
+
+        coalesce(
+            dd.date_key,
+            -1
+        ) as screening_date_key,
+
+        coalesce(
+            dpoe.point_of_entry_key,
+
+            {{ dbt_utils.generate_surrogate_key([
+                "'UNKNOWN'"
+            ]) }}
+        ) as point_of_entry_key,
 
         s.source_system,
+        s.source_row_id,
         s.source_record_id,
+
+        s.source_person_name,
+        s.source_person_identifier,
 
         s.screening_date,
         s.screening_datetime,
 
-        s.is_screened,
-        s.is_suspected,
-        s.is_confirmed,
-        s.is_tested,
-
-        s.classification,
-        s.test_result,
-
-        s.facility_id,
-        s.reporting_county,
-        s.reporting_subcounty,
-        s.ward,
         s.point_of_entry,
 
-        1 as screening_count,
+        s.source_classification,
+        s.screening_outcome,
 
-        case
-            when s.is_screened is true then 1
-            else 0
-        end as screened_count,
+        s.screening_count,
+        s.normal_flag,
+        s.flagged_flag,
+        s.suspected_flag,
+        s.probable_flag,
 
-        case
-            when s.is_suspected is true then 1
-            else 0
-        end as suspected_count,
+        s.latitude,
+        s.longitude,
 
-        case
-            when s.is_confirmed is true then 1
-            else 0
-        end as confirmed_count,
+        s.ingested_at,
+        s.batch_id,
+        s.source_file
 
-        case
-            when s.is_tested is true then 1
-            else 0
-        end as tested_count
+    from unioned_screenings s
 
-    from combined s
+    left join {{ ref('dim_date') }} dd
+        on s.screening_date = dd.full_date
 
-    left join locations l
-        on s.reporting_county is not distinct from l.county
-       and s.reporting_subcounty is not distinct from l.subcounty
-       and s.ward is not distinct from l.ward
-       and s.point_of_entry is not distinct from l.point_of_entry
-
-    left join facilities f
-        on s.facility_id = f.mfl_code
+    left join {{ ref('dim_point_of_entry') }} dpoe
+        on s.point_of_entry_normalized
+         = dpoe.point_of_entry_normalized
 
 )
 

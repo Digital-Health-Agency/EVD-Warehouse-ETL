@@ -6,6 +6,7 @@ with source_data as (
         _source,
         _batch_id,
         _source_file,
+        _raw_hash,
         _processed,
 
         subject_identifier,
@@ -25,7 +26,12 @@ with source_data as (
         value_code,
         reference_range_low,
         reference_range_high,
-        case_identifier
+        dlt_load_id,
+        dlt_id,
+        case_identifier,
+        id_field,
+        testing_lab_code,
+        testing_lab_name
 
     from {{ source('bronze', 'lims_raw') }}
 
@@ -39,6 +45,7 @@ cleaned as (
         nullif(trim(_source), '') as _source,
         _batch_id,
         nullif(trim(_source_file), '') as _source_file,
+        nullif(trim(_raw_hash), '') as _raw_hash,
         coalesce(_processed, false) as _processed,
 
         nullif(trim(subject_identifier), '') as subject_identifier,
@@ -52,10 +59,16 @@ cleaned as (
 
             when trim(collect_date)
                     ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
-                 and substring(trim(collect_date), 1, 4)::integer
-                     between 1 and 9999
+                 and substring(
+                     trim(collect_date),
+                     1,
+                     4
+                 )::integer between 1 and 9999
                  and to_char(
-                     to_date(trim(collect_date), 'YYYY-MM-DD'),
+                     to_date(
+                         trim(collect_date),
+                         'YYYY-MM-DD'
+                     ),
                      'YYYY-MM-DD'
                  ) = trim(collect_date)
                 then to_date(
@@ -65,10 +78,15 @@ cleaned as (
 
             when trim(collect_date)
                     ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}$'
-                 and right(trim(collect_date), 4)::integer
-                     between 1 and 9999
+                 and right(
+                     trim(collect_date),
+                     4
+                 )::integer between 1 and 9999
                  and to_char(
-                     to_date(trim(collect_date), 'DD/MM/YYYY'),
+                     to_date(
+                         trim(collect_date),
+                         'DD/MM/YYYY'
+                     ),
                      'DD/MM/YYYY'
                  ) = trim(collect_date)
                 then to_date(
@@ -148,21 +166,30 @@ cleaned as (
 
         case
             when nullif(trim(reference_range_low), '') is null then null
+
             when trim(reference_range_low)
                     ~ '^-?[0-9]+(\.[0-9]+)?$'
                 then trim(reference_range_low)::numeric
+
             else null
         end as reference_range_low,
 
         case
             when nullif(trim(reference_range_high), '') is null then null
+
             when trim(reference_range_high)
                     ~ '^-?[0-9]+(\.[0-9]+)?$'
                 then trim(reference_range_high)::numeric
+
             else null
         end as reference_range_high,
 
-        nullif(trim(case_identifier), '') as case_identifier
+        nullif(trim(dlt_load_id), '') as dlt_load_id,
+        nullif(trim(dlt_id), '') as dlt_id,
+        nullif(trim(case_identifier), '') as case_identifier,
+        nullif(trim(id_field), '') as id_field,
+        nullif(trim(testing_lab_code), '') as testing_lab_code,
+        nullif(trim(testing_lab_name), '') as testing_lab_name
 
     from source_data
 
@@ -178,6 +205,7 @@ ranked as (
                 identifier,
                 specimen_identifier,
                 order_identifier,
+                id_field,
                 '__bronze_id_' || id::text
             )
             order by
@@ -197,6 +225,7 @@ deduplicated as (
         _source,
         _batch_id,
         _source_file,
+        _raw_hash,
         _processed,
 
         subject_identifier,
@@ -216,7 +245,12 @@ deduplicated as (
         value_code,
         reference_range_low,
         reference_range_high,
-        case_identifier
+        dlt_load_id,
+        dlt_id,
+        case_identifier,
+        id_field,
+        testing_lab_code,
+        testing_lab_name
 
     from ranked
 

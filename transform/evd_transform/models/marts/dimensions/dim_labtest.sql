@@ -1,3 +1,5 @@
+
+
 with source as (
 
     select
@@ -12,7 +14,7 @@ with source as (
 
 ),
 
-standardized as (
+valid_tests as (
 
     select
         test_code,
@@ -20,14 +22,7 @@ standardized as (
         code_text,
         component_code,
         specimen_type,
-        unit,
-
-        lower(test_code) as normalized_test_code,
-        lower(test_name) as normalized_test_name,
-        lower(code_text) as normalized_code_text,
-        lower(component_code) as normalized_component_code,
-        lower(specimen_type) as normalized_specimen_type,
-        lower(unit) as normalized_unit
+        unit
 
     from source
 
@@ -44,21 +39,20 @@ ranked as (
 
         row_number() over (
             partition by
-                coalesce(normalized_test_code, ''),
-                coalesce(normalized_test_name, ''),
-                coalesce(normalized_component_code, ''),
-                coalesce(normalized_specimen_type, ''),
-                coalesce(normalized_unit, '')
+                lower(coalesce(test_code, '')),
+                lower(coalesce(test_name, '')),
+                lower(coalesce(component_code, '')),
+                lower(coalesce(specimen_type, '')),
+                lower(coalesce(unit, ''))
             order by
-                test_code nulls last,
-                test_name nulls last,
-                code_text nulls last,
-                component_code nulls last,
-                specimen_type nulls last,
-                unit nulls last
+                case
+                    when code_text is not null then 0
+                    else 1
+                end,
+                code_text
         ) as row_number
 
-    from standardized
+    from valid_tests
 
 ),
 
