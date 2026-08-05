@@ -1,4 +1,8 @@
-
+{{ config(
+    materialized = 'table',
+    schema = 'silver',
+    alias = 'slv_mdharura'
+) }}
 
 with source_data as (
 
@@ -18,9 +22,11 @@ with source_data as (
         created_at,
         unit_name,
         unit_type,
+
         signal_verified,
         signal_verified_true,
         signal_investigated,
+
         signal_verification_date,
         signal_investigation_date
 
@@ -40,19 +46,16 @@ cleaned as (
 
         nullif(trim(id_field), '') as id_field,
         nullif(trim(signal), '') as signal,
+
         nullif(trim(community_unit), '') as community_unit,
         nullif(trim(subcounty), '') as subcounty,
         nullif(trim(county), '') as county,
+
         nullif(trim(unit_name), '') as unit_name,
         nullif(trim(unit_type), '') as unit_type,
 
-        signal_verified,
-        signal_verified_true,
-        signal_investigated,
-
         /*
-         * Reporting timestamp.
-         * Invalid values, including year 0000, become null.
+         * When the signal was created in mDharura.
          */
         case
             when nullif(trim(created_at), '') is null then null
@@ -102,10 +105,25 @@ cleaned as (
                 )::timestamp
 
             else null
-        end as created_at,
+        end as signal_created_at,
 
         /*
-         * Verification timestamp.
+         * Verification completed flag.
+         */
+        signal_verified,
+
+        /*
+         * Signal confirmed as a true signal/event.
+         */
+        signal_verified_true,
+
+        /*
+         * Investigation completed flag.
+         */
+        signal_investigated,
+
+        /*
+         * When verification was completed.
          */
         case
             when nullif(trim(signal_verification_date), '') is null then null
@@ -180,10 +198,10 @@ cleaned as (
                 )::timestamp
 
             else null
-        end as signal_verification_date,
+        end as signal_verification_at,
 
         /*
-         * Investigation timestamp.
+         * When investigation was completed.
          */
         case
             when nullif(trim(signal_investigation_date), '') is null then null
@@ -258,7 +276,7 @@ cleaned as (
                 )::timestamp
 
             else null
-        end as signal_investigation_date
+        end as signal_investigation_at
 
     from source_data
 
@@ -272,7 +290,6 @@ ranked as (
         row_number() over (
             partition by coalesce(
                 id_field,
-                signal,
                 '__bronze_id_' || id::text
             )
             order by
@@ -284,7 +301,7 @@ ranked as (
 
 ),
 
-deduplicated as (
+final as (
 
     select
         id,
@@ -297,19 +314,19 @@ deduplicated as (
         id_field,
         signal,
         community_unit,
+        subcounty,
+        county,
         unit_name,
         unit_type,
-        county,
-        subcounty,
+
+        signal_created_at,
 
         signal_verified,
         signal_verified_true,
-        signal_verification_date,
+        signal_verification_at,
 
         signal_investigated,
-        signal_investigation_date,
-
-        created_at
+        signal_investigation_at
 
     from ranked
 
@@ -318,4 +335,4 @@ deduplicated as (
 )
 
 select *
-from deduplicated
+from final
