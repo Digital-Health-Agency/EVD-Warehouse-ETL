@@ -1,13 +1,12 @@
 {{ config(
     materialized = 'table',
-    schema = 'gold'
+    schema = 'gold',
+    alias = 'report_screening'
 ) }}
 
 with screening_source as (
 
-    select
-        *
-
+    select *
     from {{ ref('fct_screening') }}
 
 ),
@@ -15,14 +14,16 @@ with screening_source as (
 screening_enriched as (
 
     select
-        /*
-         * Retain every column from fct_screening.
-         */
+        ------------------------------------------------------------------
+        -- Retain all fact columns
+        ------------------------------------------------------------------
+
         s.*,
 
-        /*
-         * Calendar hierarchy from dim_date.
-         */
+        ------------------------------------------------------------------
+        -- Calendar hierarchy
+        ------------------------------------------------------------------
+
         d.full_date
             as reporting_date,
 
@@ -38,9 +39,10 @@ screening_enriched as (
         d.month_name
             as reporting_month_name,
 
-        /*
-         * Epidemiological hierarchy from dim_epiweek.
-         */
+        ------------------------------------------------------------------
+        -- Epidemiological week hierarchy
+        ------------------------------------------------------------------
+
         e.epi_week_key
             as reporting_epi_week_key,
 
@@ -71,47 +73,135 @@ screening_enriched as (
         e.current_epi_year_flag
             as reporting_current_epi_year_flag,
 
-        /*
-         * Point-of-entry attributes.
-         *
-         * These are populated for traveller screenings.
-         * Other pathways may have no point of entry.
-         */
-        coalesce(
-            p.point_of_entry,
-            s.point_of_entry,
-            'Unknown'
-        ) as reporting_point_of_entry,
+        ------------------------------------------------------------------
+        -- Traveller screening location
+        ------------------------------------------------------------------
 
-  
-        /*
-         * Canonical reporting category.
-         *
-         * The core classification logic is already handled
-         * in fct_screening.
-         */
         case
+            when s.surveillance_pathway = 'TRAVELLER'
+            then coalesce(
+                p.point_of_entry,
+                s.point_of_entry,
+                'Unknown'
+            )
+
+            else null
+        end as reporting_point_of_entry,
+
+        ------------------------------------------------------------------
+        -- Facility screening location
+        ------------------------------------------------------------------
+
+        case
+            when s.surveillance_pathway = 'FACILITY'
+            then coalesce(
+                f.mfl_code,
+                s.facility_code
+            )
+
+            else null
+        end as reporting_mfl_code,
+
+        case
+            when s.surveillance_pathway = 'FACILITY'
+            then coalesce(
+                f.facility_name,
+                'Unknown'
+            )
+
+            else null
+        end as reporting_facility_name,
+
+        case
+            when s.surveillance_pathway = 'FACILITY'
+            then f.province
+
+            else null
+        end as reporting_province,
+
+        case
+            when s.surveillance_pathway = 'FACILITY'
+            then f.county
+
+            else null
+        end as reporting_county,
+
+        case
+            when s.surveillance_pathway = 'FACILITY'
+            then f.subcounty
+
+            else null
+        end as reporting_subcounty,
+
+        case
+            when s.surveillance_pathway = 'FACILITY'
+            then f.ward
+
+            else null
+        end as reporting_ward,
+
+        ------------------------------------------------------------------
+        -- Unified reporting location
+        ------------------------------------------------------------------
+
+        case
+            when s.surveillance_pathway = 'TRAVELLER'
+            then coalesce(
+                p.point_of_entry,
+                s.point_of_entry,
+                'Unknown'
+            )
+
+            when s.surveillance_pathway = 'FACILITY'
+            then coalesce(
+                f.facility_name,
+                s.facility_code,
+                'Unknown'
+            )
+
+            else 'Unknown'
+        end as reporting_location,
+
+        case
+            when s.surveillance_pathway = 'TRAVELLER'
+                then 'POINT OF ENTRY'
+
+            when s.surveillance_pathway = 'FACILITY'
+                then 'HEALTH FACILITY'
+
+            else coalesce(
+                s.surveillance_pathway,
+                'UNKNOWN'
+            )
+        end as reporting_location_type,
+
+        ------------------------------------------------------------------
+        -- Canonical reporting category
+        ------------------------------------------------------------------
+
+        case
+            when nullif(trim(s.screening_outcome), '') is not null
+                then upper(trim(s.screening_outcome))
+
             when coalesce(s.suspected_flag, 0) = 1
                 then 'SUSPECTED'
 
             when coalesce(s.probable_flag, 0) = 1
                 then 'PROBABLE'
 
-            when coalesce(s.normal_flag, 0) = 1
-                then 'NORMAL'
-
             when coalesce(s.flagged_flag, 0) = 1
                 then 'FLAGGED'
 
-            when nullif(trim(s.screening_outcome), '') is not null
-                then upper(trim(s.screening_outcome))
+            when coalesce(s.normal_flag, 0) = 1
+                then 'NORMAL'
 
             else 'UNKNOWN'
         end as reporting_screening_category,
 
-        /*
-         * Reporting measures.
-         */
+        ------------------------------------------------------------------
+        -- Reporting measures
+        ------------------------------------------------------------------
+
         coalesce(
             s.screening_count,
             1
@@ -142,26 +232,68 @@ screening_enriched as (
         end::integer as probable_screening_count,
 
         case
+            when upper(
+                trim(
+                    coalesce(
+                        s.screening_outcome,
+                        ''
+                    )
+                )
+            ) = 'NOT RISK'
+                then coalesce(s.screening_count, 1)
+
+            else 0
+        end::integer as not_risk_screening_count,
+
+        case
             when coalesce(s.normal_flag, 0) = 0
              and coalesce(s.flagged_flag, 0) = 0
              and coalesce(s.suspected_flag, 0) = 0
              and coalesce(s.probable_flag, 0) = 0
+             and upper(
+                    trim(
+                        coalesce(
+                            s.screening_outcome,
+                            ''
+                        )
+                    )
+                 ) <> 'NOT RISK'
                 then coalesce(s.screening_count, 1)
+
             else 0
         end::integer as unknown_screening_count
 
     from screening_source s
 
+    ----------------------------------------------------------------------
+    -- Calendar date
+    ----------------------------------------------------------------------
+
     left join {{ ref('dim_date') }} d
         on s.screening_date_key = d.date_key
+
+    ----------------------------------------------------------------------
+    -- Epidemiological week
+    ----------------------------------------------------------------------
 
     left join {{ ref('dim_epiweek') }} e
         on d.full_date between
             e.start_of_week
             and e.end_of_week
 
+    ----------------------------------------------------------------------
+    -- Point of entry
+    ----------------------------------------------------------------------
+
     left join {{ ref('dim_point_of_entry') }} p
         on s.point_of_entry_key = p.point_of_entry_key
+
+    ----------------------------------------------------------------------
+    -- Facility/MFL
+    ----------------------------------------------------------------------
+
+    left join {{ ref('dim_facilitylist') }} f
+        on s.facility_key = f.facility_key
 
 )
 
