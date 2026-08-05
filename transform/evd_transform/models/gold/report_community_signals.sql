@@ -6,111 +6,107 @@ with community_signals as (
 
 ),
 
-locations as (
+final as (
 
-    select *
-    from {{ ref('dim_location') }}
+    select
+        ------------------------------------------------------------------
+        -- Signal identifiers
+        ------------------------------------------------------------------
 
-),
+        f.community_signal_key,
+        f.source_system,
+        f.source_signal_id,
 
-dates as (
+        ------------------------------------------------------------------
+        -- Signal details
+        ------------------------------------------------------------------
 
-    select *
-    from {{ ref('dim_date') }}
+        f.signal as signal_description,
 
-),
+        f.signal_created_at as created_at,
+        f.signal_verification_at as verification_at,
+        f.signal_investigation_at as investigation_at,
 
-epiweeks as (
+        f.signal_verified,
+        f.signal_verified_true,
+        f.signal_investigated,
 
-    select *
-    from {{ ref('dim_epiweek') }}
+        ------------------------------------------------------------------
+        -- Calendar date
+        ------------------------------------------------------------------
+
+        f.created_date_key,
+        created_date.full_date as created_date,
+
+        f.verification_date_key,
+        verification_date.full_date as verification_date,
+
+        f.investigation_date_key,
+        investigation_date.full_date as investigation_date,
+
+        ------------------------------------------------------------------
+        -- Epidemiological week
+        ------------------------------------------------------------------
+
+        f.epi_week_key,
+        epi.week_number,
+        epi.epi_year,
+        epi.epi_week_label,
+        epi.start_of_week,
+        epi.end_of_week,
+
+        ------------------------------------------------------------------
+        -- Location
+        ------------------------------------------------------------------
+
+        f.location_key,
+        location.county,
+        location.subcounty,
+        location.community_unit,
+        location.unit_name,
+        location.unit_type,
+
+        ------------------------------------------------------------------
+        -- Timeliness
+        ------------------------------------------------------------------
+
+        f.verification_time_hours,
+        f.investigation_time_hours,
+
+        ------------------------------------------------------------------
+        -- Indicators
+        ------------------------------------------------------------------
+
+        f.signals_reported,
+        f.signals_verified,
+        f.signals_verified_true,
+        f.signals_investigated,
+
+        ------------------------------------------------------------------
+        -- Lineage
+        ------------------------------------------------------------------
+
+        f._source,
+        f._ingested_at
+
+    from community_signals f
+
+    left join {{ ref('dim_location') }} location
+        on f.location_key = location.location_key
+
+    left join {{ ref('dim_date') }} created_date
+        on f.created_date_key = created_date.date_key
+
+    left join {{ ref('dim_date') }} verification_date
+        on f.verification_date_key = verification_date.date_key
+
+    left join {{ ref('dim_date') }} investigation_date
+        on f.investigation_date_key = investigation_date.date_key
+
+    left join {{ ref('dim_epiweek') }} epi
+        on f.epi_week_key = epi.epi_week_key
 
 )
 
-select
-    --------------------------------------------------------------------
-    -- Signal identifiers
-    --------------------------------------------------------------------
-
-    f.community_signal_key,
-    f.source_system,
-    f.source_signal_id,
-    f.source_row_id,
-
-    --------------------------------------------------------------------
-    -- Signal details
-    --------------------------------------------------------------------
-
-    f.signal_description,
-    f.signal_reported_at,
-
-    f.signal_verified,
-    f.signal_verified_true,
-    f.signal_verification_date,
-
-    f.signal_investigated,
-    f.signal_investigation_date,
-
-    --------------------------------------------------------------------
-    -- Date mapping
-    --------------------------------------------------------------------
-
-    f.reported_date_key,
-    d.full_date as reported_date,
-
-    f.verification_date_key,
-    f.investigation_date_key,
-
-    --------------------------------------------------------------------
-    -- Epidemiological week
-    --------------------------------------------------------------------
-
-    f.epi_week_key,
-    ew.week_number,
-    ew.epi_year,
-    ew.epi_week_label,
-    ew.start_of_week,
-    ew.end_of_week,
-
-    --------------------------------------------------------------------
-    -- Location mapping
-    --------------------------------------------------------------------
-
-    f.location_key,
-    l.county,
-    l.subcounty,
-    l.community_unit,
-    l.unit_name,
-    l.unit_type,
-
-    --------------------------------------------------------------------
-    -- Timeliness
-    --------------------------------------------------------------------
-
-    f.verification_time_hours,
-    f.investigation_time_hours,
-
-    --------------------------------------------------------------------
-    -- Indicators
-    --------------------------------------------------------------------
-
-    f.signal_count as signals_reported,
-    f.verified_signal_count as signals_verified,
-
-    --------------------------------------------------------------------
-    -- Lineage
-    --------------------------------------------------------------------
-
-    f._source,
-    f._ingested_at
-
-from community_signals f
-
-left join locations l
-    on f.location_key = l.location_key
-
-left join dates d
-    on f.reported_date_key = d.date_key
-
-left join epiweeks ew
-    on f.epi_week_key = ew.epi_week_key
+select *
+from final
