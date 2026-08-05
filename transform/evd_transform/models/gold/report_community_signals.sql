@@ -1,4 +1,5 @@
 
+
 with community_signals as (
 
     select *
@@ -16,6 +17,7 @@ final as (
         f.community_signal_key,
         f.source_system,
         f.source_signal_id,
+        f.source_row_id,
 
         ------------------------------------------------------------------
         -- Signal details
@@ -23,40 +25,45 @@ final as (
 
         f.signal as signal_description,
 
-        f.signal_created_at as created_at,
-        f.signal_verification_at as verification_at,
-        f.signal_investigation_at as investigation_at,
+        ------------------------------------------------------------------
+        -- Signal lifecycle dates
+        ------------------------------------------------------------------
+
+        f.signal_created_date,
 
         f.signal_verified,
         f.signal_verified_true,
+        f.signal_verification_date,
+
         f.signal_investigated,
+        f.signal_investigation_date,
 
         ------------------------------------------------------------------
-        -- Calendar date
+        -- Calendar dimension mapping
         ------------------------------------------------------------------
 
         f.created_date_key,
         created_date.full_date as created_date,
 
         f.verification_date_key,
-        verification_date.full_date as verification_date,
+        verification_date.full_date as verified_date,
 
         f.investigation_date_key,
-        investigation_date.full_date as investigation_date,
+        investigation_date.full_date as investigated_date,
 
         ------------------------------------------------------------------
         -- Epidemiological week
         ------------------------------------------------------------------
 
         f.epi_week_key,
-        epi.week_number,
-        epi.epi_year,
-        epi.epi_week_label,
-        epi.start_of_week,
-        epi.end_of_week,
+        epiweek.week_number,
+        epiweek.epi_year,
+        epiweek.epi_week_label,
+        epiweek.start_of_week,
+        epiweek.end_of_week,
 
         ------------------------------------------------------------------
-        -- Location
+        -- Location mapping
         ------------------------------------------------------------------
 
         f.location_key,
@@ -67,11 +74,11 @@ final as (
         location.unit_type,
 
         ------------------------------------------------------------------
-        -- Timeliness
+        -- Turnaround measures
         ------------------------------------------------------------------
 
-        f.verification_time_hours,
-        f.investigation_time_hours,
+        f.verification_time_days,
+        f.investigation_time_days,
 
         ------------------------------------------------------------------
         -- Indicators
@@ -103,8 +110,8 @@ final as (
     left join {{ ref('dim_date') }} investigation_date
         on f.investigation_date_key = investigation_date.date_key
 
-    left join {{ ref('dim_epiweek') }} epi
-        on f.epi_week_key = epi.epi_week_key
+    left join {{ ref('dim_epiweek') }} epiweek
+        on f.epi_week_key = epiweek.epi_week_key
 
 )
 
