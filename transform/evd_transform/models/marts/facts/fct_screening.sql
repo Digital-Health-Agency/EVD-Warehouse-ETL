@@ -267,10 +267,148 @@ taifacare_screenings as (
 
 ),
 
+uhai_source as (
+
+    select
+        id,
+        _ingested_at,
+        _source,
+        _batch_id,
+        _source_file,
+
+        system_id,
+        names,
+        identifier_number,
+        suspected,
+        point_of_entry,
+        reporting_date,
+        created_at
+
+    from {{ ref('slv_uhai_cases') }}
+
+),
+
+uhai_deduplicated as (
+
+    select
+        id,
+        _ingested_at,
+        _source,
+        _batch_id,
+        _source_file,
+
+        system_id,
+        names,
+        identifier_number,
+        suspected,
+        point_of_entry,
+        reporting_date,
+        created_at
+
+    from (
+
+        select
+            *,
+
+            row_number() over (
+                partition by coalesce(
+                    nullif(trim(system_id), ''),
+                    cast(id as text)
+                )
+                order by
+                    _ingested_at desc nulls last,
+                    id desc
+            ) as row_number
+
+        from uhai_source
+
+    ) ranked
+
+    where row_number = 1
+
+),
+
+uhai_screenings as (
+
+    select
+        'UHAI'::text as source_system,
+        'TRAVELLER'::text as surveillance_pathway,
+
+        id::bigint as source_row_id,
+
+        coalesce(
+            nullif(trim(system_id), ''),
+            cast(id as text)
+        ) as source_record_id,
+
+        nullif(trim(names), '') as person_name,
+        nullif(trim(identifier_number), '') as person_identifier,
+
+        coalesce(
+            reporting_date,
+            created_at::date
+        ) as screening_date,
+
+        created_at::timestamp as screening_datetime,
+
+        {{ uhai_point_of_entry_name('point_of_entry') }} as point_of_entry,
+
+        lower(
+            {{ uhai_point_of_entry_name('point_of_entry') }}
+        ) as point_of_entry_normalized,
+
+        null::text as facility_code,
+
+        nullif(trim(suspected), '') as source_classification,
+
+        case
+            when lower(trim(suspected)) = 'yes'
+                then 'SUSPECTED'
+            else 'NORMAL'
+        end as screening_outcome,
+
+        1::integer as screening_count,
+
+        case
+            when lower(trim(suspected)) = 'yes'
+                then 0
+            else 1
+        end::integer as normal_flag,
+
+        case
+            when lower(trim(suspected)) = 'yes'
+                then 1
+            else 0
+        end::integer as flagged_flag,
+
+        case
+            when lower(trim(suspected)) = 'yes'
+                then 1
+            else 0
+        end::integer as suspected_flag,
+
+        0::integer as probable_flag,
+
+        null::double precision as latitude,
+        null::double precision as longitude,
+
+        _ingested_at as ingested_at,
+        _batch_id as batch_id,
+        _source_file as source_file
+
+    from uhai_deduplicated
+
+),
+
 unioned_screenings as (
 
     select *
     from adam_screenings
+
+    union all
+
+    select *
+    from uhai_screenings
 
     union all
 
