@@ -20,7 +20,8 @@ from evd_orchestration.assets import (
 from evd_orchestration.assets.transform import DBT_PROFILES_DIR, DBT_PROJECT_DIR
 from evd_orchestration.jobs import dbt_job, ingest_job
 from evd_orchestration.resources import DuckDBResource, MinIOResource, PostgresResource
-from evd_orchestration.schedules import lims_daily_schedule
+from evd_orchestration.schedules import ingest_daily_schedule
+from evd_orchestration.sensors import dbt_after_ingest_sensor
 
 defs = Definitions(
     assets=[
@@ -38,7 +39,8 @@ defs = Definitions(
         evd_dbt_assets,
     ],
     jobs=[ingest_job, dbt_job],
-    schedules=[lims_daily_schedule],
+    schedules=[ingest_daily_schedule],
+    sensors=[dbt_after_ingest_sensor],
     resources={
         "minio": MinIOResource(
             endpoint_url=os.environ["MINIO_ENDPOINT"],
