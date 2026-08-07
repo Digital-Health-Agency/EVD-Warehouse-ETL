@@ -11,14 +11,53 @@ with adam_point_of_entry as (
 
 ),
 
+uhai_point_of_entry as (
+
+    select distinct
+        {{ uhai_point_of_entry_name('point_of_entry') }} as point_of_entry,
+
+        lower(
+            {{ uhai_point_of_entry_name('point_of_entry') }}
+        ) as point_of_entry_normalized
+
+    from {{ ref('slv_uhai_cases') }}
+
+    where nullif(trim(point_of_entry), '') is not null
+
+),
+
+reported_point_of_entry as (
+
+    select
+        point_of_entry,
+        point_of_entry_normalized,
+
+        'ADAM'::text as source_system
+
+    from adam_point_of_entry
+
+    union all
+
+    select
+        point_of_entry,
+        point_of_entry_normalized,
+
+        'UHAI'::text as source_system
+
+    from uhai_point_of_entry
+
+),
+
 deduplicated as (
 
     select
         point_of_entry_normalized,
 
-        min(point_of_entry) as point_of_entry
+        min(point_of_entry) as point_of_entry,
 
-    from adam_point_of_entry
+        min(source_system) as source_system
+
+    from reported_point_of_entry
 
     group by
         point_of_entry_normalized
@@ -35,7 +74,7 @@ known_points_of_entry as (
         point_of_entry,
         point_of_entry_normalized,
 
-        'ADAM'::text as source_system,
+        source_system,
 
         true::boolean as is_active
 

@@ -9,6 +9,12 @@ with src as (
 cleaned as (
 
     select
+        id,
+        _ingested_at,
+        _source,
+        _batch_id,
+        _source_file,
+
         nullif(system_id, '') as system_id,
         nullif(names, '') as names,
         upper(nullif(sex, '')) as sex,
