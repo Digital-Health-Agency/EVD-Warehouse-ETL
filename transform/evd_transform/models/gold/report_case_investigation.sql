@@ -12,6 +12,126 @@ with case_investigation_source as (
 
 ),
 
+lab_results as (
+
+    select
+        specimen_identifier,
+        case_identifier,
+        subject_identifier,
+        component_code,
+        test_name,
+        result_category,
+        result_value,
+        result_datetime
+
+    from {{ ref('fct_lab_result') }}
+
+),
+
+lab_results_by_specimen as (
+
+    select
+        specimen_identifier,
+
+        /*
+         * Laboratory-confirmed case flag.
+         *
+         * Current EVD laboratory test:
+         * component_code = 86518-8
+         */
+        max(
+            case
+                when trim(component_code) = '86518-8'
+                 and result_category = 'POSITIVE'
+                    then 1
+                else 0
+            end
+        )::integer as confirmed_case_flag,
+
+        /*
+         * Negative laboratory result flag.
+         */
+        max(
+            case
+                when trim(component_code) = '86518-8'
+                 and result_category = 'NEGATIVE'
+                    then 1
+                else 0
+            end
+        )::integer as negative_lab_flag,
+
+        /*
+         * Latest EVD laboratory result datetime.
+         */
+        max(
+            case
+                when trim(component_code) = '86518-8'
+                    then result_datetime
+                else null
+            end
+        ) as latest_lab_result_datetime,
+
+        /*
+         * Authoritative LIMS result category.
+         *
+         * Priority:
+         * POSITIVE
+         * NEGATIVE
+         * INCONCLUSIVE
+         * OTHER
+         */
+        case
+            when max(
+                case
+                    when trim(component_code) = '86518-8'
+                     and result_category = 'POSITIVE'
+                        then 1
+                    else 0
+                end
+            ) = 1
+                then 'POSITIVE'
+
+            when max(
+                case
+                    when trim(component_code) = '86518-8'
+                     and result_category = 'NEGATIVE'
+                        then 1
+                    else 0
+                end
+            ) = 1
+                then 'NEGATIVE'
+
+            when max(
+                case
+                    when trim(component_code) = '86518-8'
+                     and result_category = 'INCONCLUSIVE'
+                        then 1
+                    else 0
+                end
+            ) = 1
+                then 'INCONCLUSIVE'
+
+            when max(
+                case
+                    when trim(component_code) = '86518-8'
+                     and result_category = 'OTHER'
+                        then 1
+                    else 0
+                end
+            ) = 1
+                then 'OTHER'
+
+            else null
+        end as lims_result_category
+
+    from lab_results
+
+    where nullif(trim(specimen_identifier), '') is not null
+
+    group by specimen_identifier
+
+),
+
 case_investigation_enriched as (
 
     select
@@ -322,12 +442,157 @@ case_investigation_enriched as (
             when coalesce(c.sample_collected_flag, 0) = 0
                 then coalesce(c.investigation_count, 1)
             else 0
-        end::integer as sample_not_collected_count
+        end::integer as sample_not_collected_count,
+
+        /*
+         * Laboratory-derived confirmation.
+         */
+        coalesce(
+            lab.confirmed_case_flag,
+            0
+        )::integer as confirmed_case_flag,
+
+        coalesce(
+            lab.negative_lab_flag,
+            0
+        )::integer as negative_lab_flag,
+
+        lab.latest_lab_result_datetime
+            as latest_lab_result_datetime,
+
+        /*
+         * Authoritative linked LIMS result.
+         */
+        lab.lims_result_category
+            as lims_result_category,
+
+        /*
+         * Final laboratory result for reporting.
+         *
+         * LIMS is authoritative when a linked result exists.
+         * ADAM source result is used only as a fallback.
+         */
+        coalesce(
+            lab.lims_result_category,
+
+            case
+                when lower(
+                    trim(
+                        c.source_final_laboratory_result
+                    )
+                ) in (
+                    'positive',
+                    'detected',
+                    'reactive',
+                    'present'
+                )
+                    then 'POSITIVE'
+
+                when lower(
+                    trim(
+                        c.source_final_laboratory_result
+                    )
+                ) in (
+                    'negative',
+                    'not detected',
+                    'non-reactive',
+                    'non reactive',
+                    'absent'
+                )
+                    then 'NEGATIVE'
+
+                when lower(
+                    trim(
+                        c.source_final_laboratory_result
+                    )
+                ) in (
+                    'indeterminate',
+                    'inconclusive',
+                    'invalid',
+                    'equivocal'
+                )
+                    then 'INCONCLUSIVE'
+
+                when nullif(
+                    trim(
+                        c.source_final_laboratory_result
+                    ),
+                    ''
+                ) is not null
+                    then upper(
+                        trim(
+                            c.source_final_laboratory_result
+                        )
+                    )
+
+                else 'UNKNOWN'
+            end
+        ) as final_laboratory_result,
+
+        /*
+         * Reconciliation between the ADAM source result
+         * and the authoritative linked LIMS result.
+         */
+        case
+            when lab.lims_result_category is null
+                then 'NO LAB MATCH'
+
+            when nullif(
+                trim(
+                    c.source_final_laboratory_result
+                ),
+                ''
+            ) is null
+                then 'NO SOURCE RESULT'
+
+            when lab.lims_result_category = 'POSITIVE'
+             and lower(
+                    trim(
+                        c.source_final_laboratory_result
+                    )
+                 ) in (
+                    'positive',
+                    'detected',
+                    'reactive',
+                    'present'
+                 )
+                then 'MATCH'
+
+            when lab.lims_result_category = 'NEGATIVE'
+             and lower(
+                    trim(
+                        c.source_final_laboratory_result
+                    )
+                 ) in (
+                    'negative',
+                    'not detected',
+                    'non-reactive',
+                    'non reactive',
+                    'absent'
+                 )
+                then 'MATCH'
+
+            when lab.lims_result_category = 'INCONCLUSIVE'
+             and lower(
+                    trim(
+                        c.source_final_laboratory_result
+                    )
+                 ) in (
+                    'indeterminate',
+                    'inconclusive',
+                    'invalid',
+                    'equivocal'
+                 )
+                then 'MATCH'
+
+            else 'MISMATCH'
+        end as laboratory_result_reconciliation
 
     from case_investigation_source c
 
     left join {{ ref('dim_date') }} investigation_date
-        on c.investigation_date_key = investigation_date.date_key
+        on c.investigation_date_key
+         = investigation_date.date_key
 
     left join {{ ref('dim_epiweek') }} epiweek
         on investigation_date.full_date
@@ -335,7 +600,12 @@ case_investigation_enriched as (
                 and epiweek.end_of_week
 
     left join {{ ref('dim_date') }} birth_date
-        on c.date_of_birth_key = birth_date.date_key
+        on c.date_of_birth_key
+         = birth_date.date_key
+
+    left join lab_results_by_specimen lab
+        on trim(c.specimen_identifier)
+         = trim(lab.specimen_identifier)
 
 )
 
