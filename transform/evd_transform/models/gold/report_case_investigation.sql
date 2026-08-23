@@ -5,9 +5,7 @@
 
 with case_investigation_source as (
 
-    select
-        *
-
+    select *
     from {{ ref('fct_case_investigation') }}
 
 ),
@@ -35,9 +33,7 @@ lab_results_by_specimen as (
 
         /*
          * Laboratory-confirmed case flag.
-         *
-         * Current EVD laboratory test:
-         * component_code = 86518-8
+         * Only a linked positive LIMS EVD result can confirm a case.
          */
         max(
             case
@@ -49,7 +45,7 @@ lab_results_by_specimen as (
         )::integer as confirmed_case_flag,
 
         /*
-         * Negative laboratory result flag.
+         * Linked negative EVD laboratory result.
          */
         max(
             case
@@ -72,13 +68,7 @@ lab_results_by_specimen as (
         ) as latest_lab_result_datetime,
 
         /*
-         * Authoritative LIMS result category.
-         *
-         * Priority:
-         * POSITIVE
-         * NEGATIVE
-         * INCONCLUSIVE
-         * OTHER
+         * Authoritative linked LIMS result category.
          */
         case
             when max(
@@ -136,12 +126,12 @@ case_investigation_enriched as (
 
     select
         /*
-         * Retain every column from fct_case_investigation.
+         * Retain every existing fact column.
          */
         c.*,
 
         /*
-         * Investigation calendar hierarchy from dim_date.
+         * Investigation calendar hierarchy.
          */
         investigation_date.full_date
             as reporting_date,
@@ -159,7 +149,7 @@ case_investigation_enriched as (
             as reporting_month_name,
 
         /*
-         * Epidemiological hierarchy from dim_epiweek.
+         * Epidemiological hierarchy.
          */
         epiweek.epi_week_key
             as reporting_epi_week_key,
@@ -192,7 +182,7 @@ case_investigation_enriched as (
             as reporting_current_epi_year_flag,
 
         /*
-         * Date-of-birth calendar attributes.
+         * Date-of-birth attributes.
          */
         birth_date.full_date
             as reporting_date_of_birth,
@@ -207,7 +197,7 @@ case_investigation_enriched as (
             as reporting_birth_month_name,
 
         /*
-         * Age at the time of investigation.
+         * Age at investigation.
          */
         case
             when c.source_person_date_of_birth is not null
@@ -219,12 +209,11 @@ case_investigation_enriched as (
                         c.source_person_date_of_birth
                     )
                 )::integer
-
             else null
         end as age_at_investigation,
 
         /*
-         * Standard age grouping for reporting.
+         * Reporting age group.
          */
         case
             when c.source_person_date_of_birth is null
@@ -295,9 +284,6 @@ case_investigation_enriched as (
 
         /*
          * Reporting classification.
-         *
-         * Prefer final classification once available.
-         * Otherwise retain the initial classification.
          */
         case
             when nullif(trim(c.final_classification), '') is not null
@@ -314,33 +300,23 @@ case_investigation_enriched as (
          * Investigation status.
          */
         case
-            when c.final_classification = 'CONFIRMED'
-                then 'CONCLUDED'
-
-            when c.final_classification = 'DISCARDED'
-                then 'CONCLUDED'
-
             when c.final_classification in (
-                'SUSPECTED',
-                'PROBABLE',
-                'UNKNOWN'
+                'CONFIRMED',
+                'DISCARDED'
             )
-                then 'OPEN'
+                then 'CONCLUDED'
 
             else 'OPEN'
         end as investigation_status,
 
         /*
-         * General investigation measure.
+         * Existing measures.
          */
         coalesce(
             c.investigation_count,
             1
         )::integer as total_investigation_count,
 
-        /*
-         * Initial classification measures.
-         */
         case
             when c.initial_classification = 'SUSPECTED'
                 then coalesce(c.investigation_count, 1)
@@ -372,9 +348,6 @@ case_investigation_enriched as (
             else 0
         end::integer as initial_unknown_count,
 
-        /*
-         * Final classification measures.
-         */
         case
             when c.final_classification = 'SUSPECTED'
                 then coalesce(c.investigation_count, 1)
@@ -406,9 +379,6 @@ case_investigation_enriched as (
             else 0
         end::integer as final_unknown_count,
 
-        /*
-         * Investigation status measures.
-         */
         case
             when c.final_classification in (
                 'CONFIRMED',
@@ -429,9 +399,6 @@ case_investigation_enriched as (
             else 0
         end::integer as open_investigation_count,
 
-        /*
-         * Sample collection measure.
-         */
         case
             when coalesce(c.sample_collected_flag, 0) = 1
                 then coalesce(c.investigation_count, 1)
@@ -445,144 +412,78 @@ case_investigation_enriched as (
         end::integer as sample_not_collected_count,
 
         /*
-         * Laboratory-derived confirmation.
+         * Authoritative laboratory result from LIMS.
+         *
+         * ADAM source_final_laboratory_result is NOT used
+         * as a fallback for laboratory truth.
          */
-        coalesce(
-            lab.confirmed_case_flag,
-            0
-        )::integer as confirmed_case_flag,
+        lab.lims_result_category
+            as lims_result_category,
 
-        coalesce(
-            lab.negative_lab_flag,
-            0
-        )::integer as negative_lab_flag,
+        case
+            when lab.lims_result_category is not null
+                then lab.lims_result_category
+            else 'UNKNOWN'
+        end as final_laboratory_result,
+
+        /*
+         * Only a linked POSITIVE LIMS EVD result
+         * can produce confirmed_case_flag = 1.
+         */
+        case
+            when lab.lims_result_category = 'POSITIVE'
+                then 1
+            else 0
+        end::integer as confirmed_case_flag,
+
+        case
+            when lab.lims_result_category = 'NEGATIVE'
+                then 1
+            else 0
+        end::integer as negative_lab_flag,
 
         lab.latest_lab_result_datetime
             as latest_lab_result_datetime,
 
         /*
-         * Authoritative linked LIMS result.
-         */
-        lab.lims_result_category
-            as lims_result_category,
-
-        /*
-         * Final laboratory result for reporting.
-         *
-         * LIMS is authoritative when a linked result exists.
-         * ADAM source result is used only as a fallback.
-         */
-        coalesce(
-            lab.lims_result_category,
-
-            case
-                when lower(
-                    trim(
-                        c.source_final_laboratory_result
-                    )
-                ) in (
-                    'positive',
-                    'detected',
-                    'reactive',
-                    'present'
-                )
-                    then 'POSITIVE'
-
-                when lower(
-                    trim(
-                        c.source_final_laboratory_result
-                    )
-                ) in (
-                    'negative',
-                    'not detected',
-                    'non-reactive',
-                    'non reactive',
-                    'absent'
-                )
-                    then 'NEGATIVE'
-
-                when lower(
-                    trim(
-                        c.source_final_laboratory_result
-                    )
-                ) in (
-                    'indeterminate',
-                    'inconclusive',
-                    'invalid',
-                    'equivocal'
-                )
-                    then 'INCONCLUSIVE'
-
-                when nullif(
-                    trim(
-                        c.source_final_laboratory_result
-                    ),
-                    ''
-                ) is not null
-                    then upper(
-                        trim(
-                            c.source_final_laboratory_result
-                        )
-                    )
-
-                else 'UNKNOWN'
-            end
-        ) as final_laboratory_result,
-
-        /*
-         * Reconciliation between the ADAM source result
-         * and the authoritative linked LIMS result.
+         * Reconcile ADAM against LIMS.
          */
         case
             when lab.lims_result_category is null
                 then 'NO LAB MATCH'
 
             when nullif(
-                trim(
-                    c.source_final_laboratory_result
-                ),
+                trim(c.source_final_laboratory_result),
                 ''
             ) is null
                 then 'NO SOURCE RESULT'
 
             when lab.lims_result_category = 'POSITIVE'
-             and lower(
-                    trim(
-                        c.source_final_laboratory_result
-                    )
-                 ) in (
-                    'positive',
-                    'detected',
-                    'reactive',
-                    'present'
-                 )
+             and lower(trim(c.source_final_laboratory_result)) in (
+                 'positive',
+                 'detected',
+                 'reactive',
+                 'present'
+             )
                 then 'MATCH'
 
             when lab.lims_result_category = 'NEGATIVE'
-             and lower(
-                    trim(
-                        c.source_final_laboratory_result
-                    )
-                 ) in (
-                    'negative',
-                    'not detected',
-                    'non-reactive',
-                    'non reactive',
-                    'absent'
-                 )
+             and lower(trim(c.source_final_laboratory_result)) in (
+                 'negative',
+                 'not detected',
+                 'non-reactive',
+                 'non reactive',
+                 'absent'
+             )
                 then 'MATCH'
 
             when lab.lims_result_category = 'INCONCLUSIVE'
-             and lower(
-                    trim(
-                        c.source_final_laboratory_result
-                    )
-                 ) in (
-                    'indeterminate',
-                    'inconclusive',
-                    'invalid',
-                    'equivocal'
-                 )
+             and lower(trim(c.source_final_laboratory_result)) in (
+                 'indeterminate',
+                 'inconclusive',
+                 'invalid',
+                 'equivocal'
+             )
                 then 'MATCH'
 
             else 'MISMATCH'
@@ -596,8 +497,8 @@ case_investigation_enriched as (
 
     left join {{ ref('dim_epiweek') }} epiweek
         on investigation_date.full_date
-            between epiweek.start_of_week
-                and epiweek.end_of_week
+        between epiweek.start_of_week
+            and epiweek.end_of_week
 
     left join {{ ref('dim_date') }} birth_date
         on c.date_of_birth_key
