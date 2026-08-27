@@ -1,3 +1,8 @@
+{{ config(
+    materialized = 'table',
+    schema = 'gold'
+) }}
+
 with lab_result_source as (
 
     select
@@ -102,11 +107,31 @@ lab_result_enriched as (
         /*
          * Canonical requesting-facility identifiers.
          *
-         * The fact already contains the source MFL code and the
-         * resolved facility key.
+         * Existing column retained unchanged.
          */
         requesting_facility.mfl_code
             as reporting_requesting_facility_mfl,
+
+        /*
+         * Additional requesting-facility attributes.
+         *
+         * These are appended without changing any
+         * existing report columns.
+         */
+        requesting_facility.facility_name
+            as reporting_requesting_facility_name,
+
+        requesting_facility.province
+            as reporting_requesting_facility_province,
+
+        requesting_facility.county
+            as reporting_requesting_facility_county,
+
+        requesting_facility.subcounty
+            as reporting_requesting_facility_subcounty,
+
+        requesting_facility.ward
+            as reporting_requesting_facility_ward,
 
         /*
          * Canonical testing-laboratory identifiers.
