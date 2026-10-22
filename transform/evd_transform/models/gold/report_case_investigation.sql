@@ -26,10 +26,48 @@ lab_results as (
 
 ),
 
-lab_results_by_specimen as (
+/*
+ * Source systems reference LIMS differently:
+ *
+ * - ADAM stores the LIMS specimen identifier (numeric).
+ * - NPHIIS stores the LIMS case identifier ('NVRL/1098/26'),
+ *   often with stray whitespace ('NVRL/ 1098/ 26').
+ *
+ * Both are exposed as a whitespace-free link key. The two key
+ * spaces cannot collide (numeric vs 'NVRL/...').
+ */
+lab_link_keys as (
 
     select
-        specimen_identifier,
+        regexp_replace(specimen_identifier, '\s', '', 'g')
+            as link_key,
+        component_code,
+        result_category,
+        result_datetime
+
+    from lab_results
+
+    where nullif(trim(specimen_identifier), '') is not null
+
+    union all
+
+    select
+        regexp_replace(case_identifier, '\s', '', 'g')
+            as link_key,
+        component_code,
+        result_category,
+        result_datetime
+
+    from lab_results
+
+    where nullif(trim(case_identifier), '') is not null
+
+),
+
+lab_results_by_link_key as (
+
+    select
+        link_key,
 
         /*
          * Latest relevant laboratory result datetime.
@@ -93,11 +131,11 @@ lab_results_by_specimen as (
             else null
         end as lims_result_category
 
-    from lab_results
+    from lab_link_keys
 
-    where nullif(trim(specimen_identifier), '') is not null
+    where nullif(link_key, '') is not null
 
-    group by specimen_identifier
+    group by link_key
 
 ),
 
@@ -112,7 +150,7 @@ case_investigation_resolved as (
         /*
          * Final laboratory truth.
          *
-         * Do NOT fall back to the ADAM source result.
+         * Do NOT fall back to the source system result.
          * No linked LIMS result = UNKNOWN.
          */
         coalesce(
@@ -211,7 +249,7 @@ case_investigation_resolved as (
         end as resolved_case_classification,
 
         /*
-         * Reconcile ADAM source laboratory result
+         * Reconcile the source-system laboratory result
          * against the linked authoritative LIMS result.
          */
         case
@@ -257,9 +295,9 @@ case_investigation_resolved as (
 
     from case_investigation_source c
 
-    left join lab_results_by_specimen lab
-        on trim(c.specimen_identifier)
-         = trim(lab.specimen_identifier)
+    left join lab_results_by_link_key lab
+        on regexp_replace(c.specimen_identifier, '\s', '', 'g')
+         = lab.link_key
 
 ),
 

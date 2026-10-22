@@ -188,6 +188,36 @@ adam_contact_registrations as (
         latitude,
         longitude,
 
+        /*
+         * Contact-tracing attributes are not captured by ADAM.
+         */
+        null::text
+            as source_case_identifier,
+
+        null::text
+            as exposure_type,
+
+        null::date
+            as exposure_date,
+
+        null::text
+            as relationship_to_case,
+
+        null::date
+            as followup_end_date,
+
+        null::integer
+            as days_followed,
+
+        null::text
+            as monitoring_status,
+
+        null::integer
+            as seen_recently_flag,
+
+        null::integer
+            as ever_symptomatic_flag,
+
         _ingested_at
             as ingested_at,
 
@@ -201,16 +231,194 @@ adam_contact_registrations as (
 
 ),
 
+nphiis_source as (
+
+    select
+        id,
+        _ingested_at,
+        _source,
+        _batch_id,
+        _source_file,
+
+        patient_id,
+        source_epid,
+        record_type,
+        classification,
+        disease,
+        county_rls,
+        subcounty_rls,
+        county,
+        sub_county,
+        facility,
+        patient_name,
+        sex,
+        birth_date,
+        exposure_type,
+        relationship,
+        days_followed,
+        seen_recently,
+        ever_symptomatic,
+        monitoring_status,
+        date_reported,
+        investigation_date,
+        contact_date,
+        followup_ends
+
+    from {{ ref('slv_nphiis_contacts') }}
+
+    /*
+     * NPHIIS delivers contacts in their own feed, so every row here
+     * is a contact. The guard protects against a future mixed feed.
+     */
+    where lower(trim(record_type)) = 'contact'
+       or record_type is null
+
+),
+
+nphiis_contact_registrations as (
+
+    select
+        'NPHIIS'::text as source_system,
+
+        id as source_row_id,
+
+        /*
+         * The contact feed's epid is a truncated prefix, so the
+         * patient id is the only reliable contact identifier.
+         */
+        coalesce(
+            patient_id,
+            cast(id as text)
+        ) as source_record_id,
+
+        patient_name
+            as source_contact_name,
+
+        patient_id
+            as source_contact_identifier,
+
+        sex
+            as source_contact_sex,
+
+        birth_date
+            as source_contact_date_of_birth,
+
+        null::text
+            as source_contact_nationality,
+
+        coalesce(
+            investigation_date,
+            date_reported
+        ) as registration_date,
+
+        cast(
+            coalesce(
+                investigation_date,
+                date_reported
+            ) as timestamp
+        ) as registration_datetime,
+
+        disease,
+
+        coalesce(county, county_rls)
+            as reporting_county,
+
+        coalesce(sub_county, subcounty_rls)
+            as reporting_subcounty,
+
+        facility
+            as health_facility,
+
+        /*
+         * NPHIIS classifies these rows only as 'Contact'. A contact
+         * has not been assessed as a case, so the canonical
+         * classification is UNKNOWN rather than a literal CONTACT.
+         */
+        classification
+            as source_initial_classification,
+
+        'UNKNOWN'::text
+            as initial_classification,
+
+        classification
+            as source_final_classification,
+
+        'UNKNOWN'::text
+            as final_classification,
+
+        null::text
+            as source_samples_collected,
+
+        0::integer
+            as sample_collected_flag,
+
+        null::text
+            as specimen_identifier,
+
+        null::text
+            as source_final_laboratory_result,
+
+        null::text
+            as checked_by,
+
+        1::integer
+            as contact_registration_count,
+
+        null::numeric
+            as latitude,
+
+        null::numeric
+            as longitude,
+
+        /*
+         * Contact-tracing attributes.
+         */
+        source_epid
+            as source_case_identifier,
+
+        exposure_type,
+
+        contact_date
+            as exposure_date,
+
+        relationship
+            as relationship_to_case,
+
+        followup_ends
+            as followup_end_date,
+
+        days_followed,
+
+        monitoring_status,
+
+        case
+            when seen_recently then 1
+            when not seen_recently then 0
+            else null
+        end::integer as seen_recently_flag,
+
+        case
+            when ever_symptomatic then 1
+            when not ever_symptomatic then 0
+            else null
+        end::integer as ever_symptomatic_flag,
+
+        _ingested_at
+            as ingested_at,
+
+        _batch_id
+            as batch_id,
+
+        _source_file
+            as source_file
+
+    from nphiis_source
+
+),
+
 /*
- * Future systems that register contacts must return the same
- * canonical columns before being added to the union.
- *
- * other_contact_registrations as (
- *
- *     select
- *         ...
- *
- * )
+ * Every source branch must return the same canonical columns
+ * in the same order.
  */
 
 unioned_contact_registrations as (
@@ -218,12 +426,10 @@ unioned_contact_registrations as (
     select *
     from adam_contact_registrations
 
-    /*
     union all
 
     select *
-    from other_contact_registrations
-    */
+    from nphiis_contact_registrations
 
 ),
 
@@ -284,6 +490,16 @@ final as (
 
         c.latitude,
         c.longitude,
+
+        c.source_case_identifier,
+        c.exposure_type,
+        c.exposure_date,
+        c.relationship_to_case,
+        c.followup_end_date,
+        c.days_followed,
+        c.monitoring_status,
+        c.seen_recently_flag,
+        c.ever_symptomatic_flag,
 
         c.ingested_at,
         c.batch_id,

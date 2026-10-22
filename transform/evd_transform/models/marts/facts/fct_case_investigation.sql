@@ -201,6 +201,15 @@ adam_case_investigations as (
         latitude,
         longitude,
 
+        /*
+         * Not captured by ADAM.
+         */
+        null::date
+            as symptom_onset_date,
+
+        null::date
+            as reported_date,
+
         _ingested_at
             as ingested_at,
 
@@ -214,15 +223,221 @@ adam_case_investigations as (
 
 ),
 
+nphiis_source as (
+
+    select
+        id,
+        _ingested_at,
+        _source,
+        _batch_id,
+        _source_file,
+
+        patient_id,
+        epid,
+        record_type,
+        classification,
+        disease,
+        county_rls,
+        subcounty_rls,
+        county,
+        sub_county,
+        facility,
+        patient_name,
+        sex,
+        birth_date,
+        samples_collected,
+        specimen_id,
+        final_result,
+        date_reported,
+        investigation_date,
+        onset_date
+
+    from {{ ref('slv_nphiis_cases') }}
+
+    /*
+     * NPHIIS delivers contacts in a separate feed, so every row here
+     * is a case. The guard protects against a future mixed feed.
+     */
+    where lower(trim(record_type)) = 'case'
+       or record_type is null
+
+),
+
+nphiis_case_investigations as (
+
+    select
+        'NPHIIS'::text as source_system,
+
+        id as source_row_id,
+
+        /*
+         * The EPID is the formal case identifier
+         * (e.g. KEN-KAJ-KAN-2026-VHF-001).
+         */
+        coalesce(
+            epid,
+            patient_id,
+            cast(id as text)
+        ) as source_record_id,
+
+        patient_name
+            as source_person_name,
+
+        patient_id
+            as source_person_identifier,
+
+        sex
+            as source_person_sex,
+
+        birth_date
+            as source_person_date_of_birth,
+
+        /*
+         * NPHIIS does not capture nationality.
+         */
+        null::text
+            as source_person_nationality,
+
+        coalesce(
+            investigation_date,
+            date_reported
+        ) as investigation_date,
+
+        cast(
+            coalesce(
+                investigation_date,
+                date_reported
+            ) as timestamp
+        ) as investigation_datetime,
+
+        disease,
+
+        coalesce(county, county_rls)
+            as reporting_county,
+
+        coalesce(sub_county, subcounty_rls)
+            as reporting_subcounty,
+
+        facility
+            as health_facility,
+
+        /*
+         * NPHIIS carries a single classification; it feeds both the
+         * initial and the final canonical classification.
+         */
+        classification
+            as source_initial_classification,
+
+        case
+            when lower(trim(classification)) = 'suspected'
+                then 'SUSPECTED'
+
+            when lower(trim(classification)) = 'probable'
+                then 'PROBABLE'
+
+            when lower(trim(classification)) = 'confirmed'
+                then 'CONFIRMED'
+
+            when lower(trim(classification)) in (
+                'discarded',
+                'not a case',
+                'no case'
+            )
+                then 'DISCARDED'
+
+            when nullif(trim(classification), '') is null
+                then 'UNKNOWN'
+
+            else upper(trim(classification))
+        end as initial_classification,
+
+        classification
+            as source_final_classification,
+
+        case
+            when lower(trim(classification)) = 'suspected'
+                then 'SUSPECTED'
+
+            when lower(trim(classification)) = 'probable'
+                then 'PROBABLE'
+
+            when lower(trim(classification)) = 'confirmed'
+                then 'CONFIRMED'
+
+            when lower(trim(classification)) in (
+                'discarded',
+                'not a case',
+                'no case',
+                'negative'
+            )
+                then 'DISCARDED'
+
+            when nullif(trim(classification), '') is null
+                then 'UNKNOWN'
+
+            else upper(trim(classification))
+        end as final_classification,
+
+        samples_collected
+            as source_samples_collected,
+
+        case
+            when lower(trim(samples_collected)) in (
+                'yes',
+                'y',
+                'true',
+                '1'
+            )
+                then 1
+
+            else 0
+        end::integer as sample_collected_flag,
+
+        /*
+         * NPHIIS specimen ids correspond to the LIMS case identifier
+         * (e.g. 'NVRL/ 1098/ 26' ~ 'NVRL/1098/26'); the gold layer
+         * normalises whitespace before linking.
+         */
+        specimen_id
+            as specimen_identifier,
+
+        final_result
+            as source_final_laboratory_result,
+
+        null::text
+            as checked_by,
+
+        1::integer
+            as investigation_count,
+
+        null::numeric
+            as latitude,
+
+        null::numeric
+            as longitude,
+
+        onset_date
+            as symptom_onset_date,
+
+        date_reported
+            as reported_date,
+
+        _ingested_at
+            as ingested_at,
+
+        _batch_id
+            as batch_id,
+
+        _source_file
+            as source_file
+
+    from nphiis_source
+
+),
+
 /*
- * Future source systems must return the same canonical columns.
- *
- * emr_case_investigations as (
- *
- *     select
- *         ...
- *
- * )
+ * Every source branch must return the same canonical columns
+ * in the same order.
  */
 
 unioned_case_investigations as (
@@ -230,12 +445,10 @@ unioned_case_investigations as (
     select *
     from adam_case_investigations
 
-    /*
     union all
 
     select *
-    from emr_case_investigations
-    */
+    from nphiis_case_investigations
 
 ),
 
@@ -296,6 +509,9 @@ final as (
 
         c.latitude,
         c.longitude,
+
+        c.symptom_onset_date,
+        c.reported_date,
 
         c.ingested_at,
         c.batch_id,

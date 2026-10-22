@@ -19,11 +19,14 @@ reflects the current state of the repo — see
 
 Purpose: preserve source fidelity. Consumers: data engineers only.
 
-Eight sending systems land in bronze today:
+Sending systems landing in bronze today (ADAM has been replaced by NPHIIS
+for cases and contacts; the ADAM tables are retained for history):
 
 | Table | Sending system |
 |---|---|
-| `bronze.adam_cases_raw` | ADAM (cases) |
+| `bronze.nphiis_cases_raw` | NPHIIS (cases) — live source |
+| `bronze.nphiis_contacts_raw` | NPHIIS (contacts) — live source |
+| `bronze.adam_cases_raw` | ADAM (cases + contacts, legacy) |
 | `bronze.adam_travellers_raw` | ADAM (travellers) |
 | `bronze.uhai_raw` | UHAI (traveler/case screenings) |
 | `bronze.lims_raw` | LIMS (lab results) |
@@ -40,6 +43,8 @@ are ingested into bronze but have no silver transform yet.
 
 | Model | Source |
 |---|---|
+| `slv_nphiis_cases` | `bronze.nphiis_cases_raw` |
+| `slv_nphiis_contacts` | `bronze.nphiis_contacts_raw` |
 | `slv_adam_cases` | `bronze.adam_cases_raw` |
 | `slv_adam_travellers` | `bronze.adam_travellers_raw` |
 | `slv_uhai_cases` | `bronze.uhai_raw` |
@@ -67,18 +72,28 @@ Dimensions:
 
 Facts:
 
-- `fct_cases` — unions `slv_adam_cases` + `slv_uhai_cases`, deduped by
-  `source_system`/`source_record_id`, joined to date/location/facility
-  dims; carries `case_count` plus suspected/probable/confirmed/tested/
-  died/recovered flags and counts.
+- `fct_case_investigation` — one row per investigated case, unioning
+  NPHIIS cases (`slv_nphiis_cases`) and legacy ADAM cases
+  (`slv_adam_cases` where `type = 'case'`); keyed by
+  `source_system`/`source_record_id` (the NPHIIS EPID).
+- `fct_contact_registration` — one row per registered contact, unioning
+  NPHIIS contacts (`slv_nphiis_contacts`) and legacy ADAM contacts. NPHIIS
+  rows carry contact-tracing attributes (`source_case_identifier` = index
+  case EPID, exposure date, relationship, follow-up end date, monitoring
+  status, symptomatic / seen-recently flags); these are null for ADAM.
+- `fct_treatment_outcome` — case outcomes (NPHIIS + ADAM) with a validated
+  `died_flag` (death date + CONFIRMED + POSITIVE source lab result).
 - `fct_screening` — unions ADAM traveller + UHAI screening records with the
   same dimension joins and count pattern.
 - `fct_lab_result` — deduped LIMS results joined to facility and
   collection/result date dims, with a categorized result
   (Positive/Negative/Inconclusive/Unknown/Other).
-- `fct_contact` (future) — **known limitation**: the file currently
-  duplicates `fct_cases`'s union/dedup logic rather than implementing real
-  contact-tracing joins. Not yet reliable for contact-tracing analytics.
+Gold `report_case_investigation` links cases to LIMS on a whitespace-free
+key that matches either the LIMS specimen identifier (ADAM) or the LIMS
+case identifier (NPHIIS `specimen_id`, e.g. `NVRL/ 1098/ 26` →
+`NVRL/1098/26`). Only a linked LIMS POSITIVE makes a case CONFIRMED.
+`report_contact_registration` joins each contact to its index case in
+`fct_case_investigation` via `source_case_identifier`.
 
 Dimensions are for filtering and drill-downs; facts provide measures.
 
