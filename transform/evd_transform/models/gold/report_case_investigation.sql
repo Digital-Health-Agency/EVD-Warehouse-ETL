@@ -39,8 +39,18 @@ lab_results as (
 lab_link_keys as (
 
     select
-        regexp_replace(specimen_identifier, '\s', '', 'g')
+        {{ lims_link_key('specimen_identifier') }}
             as link_key,
+
+        /*
+         * The LIMS case (per-patient episode) the row belongs to.
+         * Used to count each laboratory-confirmed case once, however
+         * many investigation records point at it.
+         */
+        {{ lims_link_key(
+            "coalesce(case_identifier, subject_identifier, specimen_identifier)"
+        ) }} as lab_case_key,
+
         component_code,
         result_category,
         result_datetime
@@ -52,8 +62,13 @@ lab_link_keys as (
     union all
 
     select
-        regexp_replace(case_identifier, '\s', '', 'g')
+        {{ lims_link_key('case_identifier') }}
             as link_key,
+
+        {{ lims_link_key(
+            "coalesce(case_identifier, subject_identifier, specimen_identifier)"
+        ) }} as lab_case_key,
+
         component_code,
         result_category,
         result_datetime
@@ -68,6 +83,9 @@ lab_results_by_link_key as (
 
     select
         link_key,
+
+        min(lab_case_key)
+            as lab_case_key,
 
         /*
          * Latest relevant laboratory result datetime.
@@ -146,6 +164,7 @@ case_investigation_resolved as (
 
         lab.lims_result_category,
         lab.latest_lab_result_datetime,
+        lab.lab_case_key,
 
         /*
          * Final laboratory truth.
@@ -159,14 +178,21 @@ case_investigation_resolved as (
         ) as final_laboratory_result,
 
         /*
-         * Only a linked POSITIVE LIMS result
-         * confirms the case.
+         * Rank of this record among all records linked to the same
+         * LIMS case. Several investigation records (duplicate EPIDs,
+         * ADAM and NPHIIS both reporting) can point at one case.
          */
         case
-            when lab.lims_result_category = 'POSITIVE'
-                then 1
-            else 0
-        end::integer as confirmed_case_flag,
+            when lab.lab_case_key is not null
+                then row_number() over (
+                    partition by lab.lab_case_key
+                    order by
+                        c.investigation_datetime nulls last,
+                        c.source_system,
+                        c.source_record_id
+                )
+            else 1
+        end as lab_case_rank,
 
         case
             when lab.lims_result_category = 'NEGATIVE'
@@ -296,8 +322,35 @@ case_investigation_resolved as (
     from case_investigation_source c
 
     left join lab_results_by_link_key lab
-        on regexp_replace(c.specimen_identifier, '\s', '', 'g')
+        on {{ lims_link_key('c.specimen_identifier') }}
          = lab.link_key
+
+),
+
+case_investigation_flagged as (
+
+    select
+        *,
+
+        /*
+         * Only a linked POSITIVE LIMS result confirms the case, and
+         * each LIMS case is confirmed once (on its first record).
+         */
+        case
+            when lims_result_category = 'POSITIVE'
+             and lab_case_rank = 1
+                then 1
+            else 0
+        end::integer as confirmed_case_flag,
+
+        case
+            when lims_result_category = 'POSITIVE'
+             and lab_case_rank > 1
+                then 1
+            else 0
+        end::integer as duplicate_lab_case_flag
+
+    from case_investigation_resolved
 
 ),
 
@@ -546,8 +599,13 @@ case_investigation_enriched as (
             else 0
         end::integer as final_probable_count,
 
+        /*
+         * Counted once per laboratory-confirmed LIMS case; duplicate
+         * records linked to the same case keep the CONFIRMED
+         * classification but do not add to the count.
+         */
         case
-            when c.resolved_case_classification = 'CONFIRMED'
+            when c.confirmed_case_flag = 1
                 then coalesce(c.investigation_count, 1)
             else 0
         end::integer as final_confirmed_count,
@@ -600,7 +658,7 @@ case_investigation_enriched as (
             else 0
         end::integer as sample_not_collected_count
 
-    from case_investigation_resolved c
+    from case_investigation_flagged c
 
     left join {{ ref('dim_date') }} investigation_date
         on c.investigation_date_key

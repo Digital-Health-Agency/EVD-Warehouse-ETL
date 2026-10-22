@@ -213,7 +213,10 @@ adam_prepared as (
             as batch_id,
 
         _source_file
-            as source_file
+            as source_file,
+
+        'INVESTIGATION'::text
+            as case_record_origin
 
     from adam_source
 
@@ -428,7 +431,10 @@ nphiis_prepared as (
             as batch_id,
 
         _source_file
-            as source_file
+            as source_file,
+
+        'INVESTIGATION'::text
+            as case_record_origin
 
     from nphiis_source
 
@@ -439,6 +445,70 @@ nphiis_prepared as (
  * same order. Everything below this point is source-agnostic.
  */
 
+/*
+ * Lab-only confirmed cases carry no recorded outcome. They are taken
+ * from fct_case_investigation (which owns the LIMS anti-join) so the
+ * outcome fact has the same case denominator as the case fact; the
+ * downstream rules resolve them to treatment_outcome UNKNOWN.
+ */
+lims_prepared as (
+
+    select
+        source_system,
+        source_row_id,
+        source_record_id,
+
+        source_person_name,
+        source_person_identifier,
+        source_person_sex,
+        source_person_date_of_birth,
+        source_person_nationality,
+
+        disease,
+
+        null::text
+            as original_source_outcome,
+
+        null::date
+            as date_of_death,
+
+        investigation_datetime
+            as outcome_recorded_datetime,
+
+        source_initial_classification,
+        initial_classification,
+
+        source_final_classification,
+        final_classification,
+
+        source_final_laboratory_result,
+
+        'POSITIVE'::text
+            as final_laboratory_result,
+
+        specimen_identifier,
+
+        reporting_county,
+        reporting_subcounty,
+        health_facility,
+
+        checked_by,
+
+        latitude,
+        longitude,
+
+        ingested_at,
+        batch_id,
+        source_file,
+
+        case_record_origin
+
+    from {{ ref('fct_case_investigation') }}
+
+    where source_system = 'LIMS'
+
+),
+
 prepared as (
 
     select *
@@ -448,6 +518,11 @@ prepared as (
 
     select *
     from nphiis_prepared
+
+    union all
+
+    select *
+    from lims_prepared
 
 ),
 
@@ -679,7 +754,9 @@ unioned_treatment_outcomes as (
 
         ingested_at,
         batch_id,
-        source_file
+        source_file,
+
+        case_record_origin
 
     from treatment_outcomes
 
@@ -756,7 +833,9 @@ final as (
 
         o.ingested_at,
         o.batch_id,
-        o.source_file
+        o.source_file,
+
+        o.case_record_origin
 
     from unioned_treatment_outcomes o
 

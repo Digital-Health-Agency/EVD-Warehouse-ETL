@@ -75,23 +75,45 @@ Facts:
 - `fct_case_investigation` — one row per investigated case, unioning
   NPHIIS cases (`slv_nphiis_cases`) and legacy ADAM cases
   (`slv_adam_cases` where `type = 'case'`); keyed by
-  `source_system`/`source_record_id` (the NPHIIS EPID).
+  `source_system`/`source_record_id` (the NPHIIS EPID). A third branch
+  adds **lab-only confirmed cases**: one row per LIMS case
+  (`case_identifier`, e.g. `NVRL/1166/26`) with a POSITIVE EVD result
+  (`86518-8`) that no ADAM/NPHIIS record links to. These rows have
+  `source_system = 'LIMS'`, `case_record_origin = 'LAB_ONLY'`, the LIMS
+  case identifier as `source_record_id`/`source_person_name`/
+  `specimen_identifier`, and the requesting facility (upper-cased from
+  `dim_facilitylist`) as `health_facility`. The anti-join uses every
+  identifier LIMS exposes (specimen and case id), so as soon as a form
+  arrives carrying the specimen id the lab-only row disappears and the
+  form's row carries the confirmation instead. Rows from a form carry
+  `case_record_origin = 'INVESTIGATION'`.
 - `fct_contact_registration` — one row per registered contact, unioning
   NPHIIS contacts (`slv_nphiis_contacts`) and legacy ADAM contacts. NPHIIS
   rows carry contact-tracing attributes (`source_case_identifier` = index
   case EPID, exposure date, relationship, follow-up end date, monitoring
   status, symptomatic / seen-recently flags); these are null for ADAM.
 - `fct_treatment_outcome` — case outcomes (NPHIIS + ADAM) with a validated
-  `died_flag` (death date + CONFIRMED + POSITIVE source lab result).
+  `died_flag` (death date + CONFIRMED + POSITIVE source lab result). The
+  LIMS lab-only cases from `fct_case_investigation` are included with
+  `treatment_outcome = 'UNKNOWN'` so the outcome denominator matches the
+  case fact; they never add to deaths or recoveries.
 - `fct_screening` — unions ADAM traveller + UHAI screening records with the
   same dimension joins and count pattern.
 - `fct_lab_result` — deduped LIMS results joined to facility and
   collection/result date dims, with a categorized result
   (Positive/Negative/Inconclusive/Unknown/Other).
 Gold `report_case_investigation` links cases to LIMS on a whitespace-free
-key that matches either the LIMS specimen identifier (ADAM) or the LIMS
-case identifier (NPHIIS `specimen_id`, e.g. `NVRL/ 1098/ 26` →
-`NVRL/1098/26`). Only a linked LIMS POSITIVE makes a case CONFIRMED.
+key (`lims_link_key` macro) that matches either the LIMS specimen
+identifier (ADAM) or the LIMS case identifier (NPHIIS `specimen_id`, e.g.
+`NVRL/ 1098/ 26` → `NVRL/1098/26`). Only a linked LIMS POSITIVE makes a
+case CONFIRMED, and each LIMS case is counted once: when several records
+link to the same LIMS case, only the first (`lab_case_rank = 1`) gets
+`final_confirmed_count = 1`; the others keep the CONFIRMED classification
+with `duplicate_lab_case_flag = 1`. Together with the lab-only branch this
+means `sum(final_confirmed_count)` always equals the number of distinct
+LIMS cases with a positive EVD result. A source-system "Confirmed" with no
+specimen id still counts 0 (it resolves to UNKNOWN); the fix for those is
+the sending system capturing the NVRL id, not the warehouse.
 `report_contact_registration` joins each contact to its index case in
 `fct_case_investigation` via `source_case_identifier`.
 

@@ -134,6 +134,13 @@ the whole point.
   LIMS columns are known (`make explore SOURCE=lims`).
 - `profiles.yml` lives in-repo at `transform/profiles.yml`, env-var driven —
   not `~/.dbt/`.
+- **Confirmed-case definition is lab-anchored.** A case counts as confirmed
+  only when it links (via `lims_link_key`) to a LIMS EVD result (`86518-8`)
+  that is POSITIVE, and each LIMS case counts once. Positive LIMS cases with
+  no linked ADAM/NPHIIS form are emitted by `fct_case_investigation` as
+  lab-only rows (`source_system = 'LIMS'`, `case_record_origin = 'LAB_ONLY'`)
+  and mirrored into `fct_treatment_outcome` with outcome UNKNOWN. Never fix a
+  case-count gap by writing synthetic records into bronze.
 
 ## Conventions
 

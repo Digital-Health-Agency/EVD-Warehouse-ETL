@@ -409,6 +409,12 @@ final as (
         end::integer as disease_available_count,
 
         /*
+         * Record origin: INVESTIGATION (ADAM/NPHIIS form) or
+         * LAB_ONLY (positive LIMS case with no linked form).
+         */
+        case_record_origin,
+
+        /*
          * Audit metadata.
          */
         ingested_at,
