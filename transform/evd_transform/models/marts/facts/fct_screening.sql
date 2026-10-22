@@ -20,7 +20,9 @@ with adam_source as (
         point_of_entry,
         created_timestamp,
         latitude,
-        longitude
+        longitude,
+        sex,
+        date_of_birth
 
     from {{ ref('slv_adam_travellers') }}
 
@@ -42,7 +44,9 @@ adam_deduplicated as (
         point_of_entry,
         created_timestamp,
         latitude,
-        longitude
+        longitude,
+        sex,
+        date_of_birth
 
     from (
 
@@ -147,6 +151,15 @@ adam_screenings as (
         latitude::double precision as latitude,
         longitude::double precision as longitude,
 
+        ------------------------------------------------------------------
+        -- Person demographics (same position in every branch: the
+        -- branches are combined with union all, which matches by position)
+        ------------------------------------------------------------------
+
+        {{ normalise_sex('sex') }} as source_person_sex,
+        date_of_birth::date as source_person_date_of_birth,
+        null::integer as source_person_age_years,
+
         _ingested_at as ingested_at,
         _batch_id as batch_id,
         _source_file as source_file
@@ -170,7 +183,9 @@ taifacare_source as (
         screening_date,
         screened_flag,
         classification,
-        cif_required
+        cif_required,
+        sex,
+        date_of_birth
 
     from {{ ref('slv_taifa_care_kenyaemr') }}
 
@@ -191,7 +206,9 @@ taifacare_deduplicated as (
         screening_date,
         screened_flag,
         classification,
-        cif_required
+        cif_required,
+        sex,
+        date_of_birth
 
     from (
 
@@ -259,6 +276,15 @@ taifacare_screenings as (
         null::double precision as latitude,
         null::double precision as longitude,
 
+        ------------------------------------------------------------------
+        -- Person demographics (same position in every branch: the
+        -- branches are combined with union all, which matches by position)
+        ------------------------------------------------------------------
+
+        {{ normalise_sex('sex') }} as source_person_sex,
+        date_of_birth::date as source_person_date_of_birth,
+        null::integer as source_person_age_years,
+
         _ingested_at as ingested_at,
         _batch_id as batch_id,
         _source_file as source_file
@@ -282,7 +308,9 @@ uhai_source as (
         suspected,
         point_of_entry,
         reporting_date,
-        created_at
+        created_at,
+        sex,
+        age_years
 
     from {{ ref('slv_uhai_cases') }}
 
@@ -303,7 +331,9 @@ uhai_deduplicated as (
         suspected,
         point_of_entry,
         reporting_date,
-        created_at
+        created_at,
+        sex,
+        age_years
 
     from (
 
@@ -392,6 +422,15 @@ uhai_screenings as (
         null::double precision as latitude,
         null::double precision as longitude,
 
+        ------------------------------------------------------------------
+        -- Person demographics (same position in every branch: the
+        -- branches are combined with union all, which matches by position)
+        ------------------------------------------------------------------
+
+        {{ normalise_sex('sex') }} as source_person_sex,
+        null::date as source_person_date_of_birth,
+        age_years::integer as source_person_age_years,
+
         _ingested_at as ingested_at,
         _batch_id as batch_id,
         _source_file as source_file
@@ -464,6 +503,9 @@ final as (
 
         s.person_name,
         s.person_identifier,
+        s.source_person_sex,
+        s.source_person_date_of_birth,
+        s.source_person_age_years,
 
         ------------------------------------------------------------------
         -- Screening date and time
