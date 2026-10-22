@@ -6,7 +6,7 @@ dependencies = [
   "dagster",
   "dagster-webserver",
   "dagster-dbt",
-  "duckdb",
+  "duckdb>=1.5,<2",  # 2.x wheels SIGILL on this VM (QEMU CPU, no AVX)
   "boto3",
   "psycopg2-binary",
   "dbt-postgres>=1.8,<2.0",
