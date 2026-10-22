@@ -26,7 +26,7 @@ build-backend = "hatchling.build"
 packages = ["orchestration/evd_orchestration"]
 
 [tool.uv]
-constraint-dependencies = ["greenlet<3.5.0"]
+constraint-dependencies = ["greenlet<3.5.0", "dbt-core<1.12"]
 
 [tool.ruff]
 line-length = 100
