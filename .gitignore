@@ -25,6 +25,9 @@ transform/.user.yml
 .pytest_cache/
 .ruff_cache/
 
+# Logs (dagster dev, dbt)
+logs/
+
 # Dagster
 $DAGSTER_HOME/
 .dagster/
