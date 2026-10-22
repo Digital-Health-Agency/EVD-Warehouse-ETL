@@ -6,9 +6,62 @@
 with lab_result_source as (
 
     select
-        *
+        *,
+
+        /*
+         * The LIMS case (per-patient episode) this test belongs to,
+         * normalised the same way the case models link to LIMS.
+         */
+        {{ lims_link_key(
+            "coalesce(case_identifier, subject_identifier, specimen_identifier)"
+        ) }} as lab_case_key
 
     from {{ ref('fct_lab_result') }}
+
+),
+
+/*
+ * Test events are the grain of this mart. Laboratory reporting counts
+ * tests; surveillance reporting counts people. One case can be sampled
+ * more than once and one specimen can be tested more than once, so the
+ * first test per case and per specimen is ranked here (within a test
+ * code) to expose case- and specimen-grain counters alongside the
+ * test-event counters.
+ */
+lab_result_ranked as (
+
+    select
+        *,
+
+        row_number() over (
+            partition by lab_case_key, test_code
+            order by result_datetime nulls last, collection_date, source_row_id
+        ) as lab_case_test_rank,
+
+        case
+            when result_category = 'POSITIVE'
+                then row_number() over (
+                    partition by lab_case_key, test_code, result_category
+                    order by result_datetime nulls last, collection_date, source_row_id
+                )
+            else null
+        end as lab_case_positive_rank,
+
+        row_number() over (
+            partition by specimen_identifier, test_code
+            order by result_datetime nulls last, collection_date, source_row_id
+        ) as specimen_test_rank,
+
+        case
+            when result_category = 'POSITIVE'
+                then row_number() over (
+                    partition by specimen_identifier, test_code, result_category
+                    order by result_datetime nulls last, collection_date, source_row_id
+                )
+            else null
+        end as specimen_positive_rank
+
+    from lab_result_source
 
 ),
 
@@ -302,9 +355,65 @@ lab_result_enriched as (
             when r.testing_laboratory_key is not null
                 then coalesce(r.test_count, 1)
             else 0
-        end::integer as testing_laboratory_matched_count
+        end::integer as testing_laboratory_matched_count,
 
-    from lab_result_source r
+        /*
+         * Case-grain measures: 1 on the first test (or first positive
+         * test) of each LIMS case for this test code, 0 otherwise.
+         * sum(positive_case_count) where test_code = '86518-8' equals
+         * the distinct laboratory-confirmed cases and must reconcile
+         * to sum(final_confirmed_count) in report_case_investigation.
+         */
+        case
+            when r.lab_case_key is not null
+             and r.lab_case_test_rank = 1
+                then 1
+            else 0
+        end::integer as tested_case_count,
+
+        case
+            when r.lab_case_key is not null
+             and r.lab_case_positive_rank = 1
+                then 1
+            else 0
+        end::integer as positive_case_count,
+
+        /*
+         * Specimen-grain measures: 1 on the first test (or first
+         * positive test) of each specimen for this test code.
+         */
+        case
+            when r.specimen_identifier is not null
+             and r.specimen_test_rank = 1
+                then 1
+            else 0
+        end::integer as tested_specimen_count,
+
+        case
+            when r.specimen_identifier is not null
+             and r.specimen_positive_rank = 1
+                then 1
+            else 0
+        end::integer as positive_specimen_count,
+
+        /*
+         * Repeat flags for the linelist.
+         */
+        case
+            when r.lab_case_key is not null
+             and r.lab_case_test_rank > 1
+                then 1
+            else 0
+        end::integer as repeat_case_test_flag,
+
+        case
+            when r.specimen_identifier is not null
+             and r.specimen_test_rank > 1
+                then 1
+            else 0
+        end::integer as repeat_specimen_test_flag
+
+    from lab_result_ranked r
 
     left join {{ ref('dim_date') }} collection_date
         on r.collection_date_key = collection_date.date_key

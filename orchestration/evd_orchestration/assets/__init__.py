@@ -8,6 +8,8 @@ from .bronze import (
     bronze_krcs_evd_screening_raw,
     bronze_lims_raw,
     bronze_mdharura_raw,
+    bronze_nphiis_cases_raw,
+    bronze_nphiis_contacts_raw,
     bronze_taifa_care_kenyaemr_raw,
     bronze_uhai_raw,
 )
@@ -23,6 +25,8 @@ __all__ = [
     "bronze_krcs_evd_screening_raw",
     "bronze_lims_raw",
     "bronze_mdharura_raw",
+    "bronze_nphiis_cases_raw",
+    "bronze_nphiis_contacts_raw",
     "bronze_taifa_care_kenyaemr_raw",
     "bronze_uhai_raw",
     "evd_dbt_assets",

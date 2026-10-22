@@ -213,13 +213,320 @@ adam_prepared as (
             as batch_id,
 
         _source_file
-            as source_file
+            as source_file,
+
+        'INVESTIGATION'::text
+            as case_record_origin
 
     from adam_source
 
 ),
 
-adam_source_outcome_standardized as (
+nphiis_source as (
+
+    select
+        id,
+        _ingested_at,
+        _source,
+        _batch_id,
+        _source_file,
+
+        patient_id,
+        epid,
+        record_type,
+        classification,
+        disease,
+        county_rls,
+        subcounty_rls,
+        county,
+        sub_county,
+        facility,
+        patient_name,
+        sex,
+        birth_date,
+        outcome,
+        death_date,
+        specimen_id,
+        final_result,
+        date_reported,
+        final_date
+
+    from {{ ref('slv_nphiis_cases') }}
+
+    where (
+            lower(trim(record_type)) = 'case'
+            or record_type is null
+        )
+
+      and (
+          outcome is not null
+          or death_date is not null
+      )
+
+),
+
+nphiis_prepared as (
+
+    select
+        'NPHIIS'::text as source_system,
+
+        id as source_row_id,
+
+        coalesce(
+            epid,
+            patient_id,
+            cast(id as text)
+        ) as source_record_id,
+
+        patient_name
+            as source_person_name,
+
+        patient_id
+            as source_person_identifier,
+
+        sex
+            as source_person_sex,
+
+        birth_date
+            as source_person_date_of_birth,
+
+        null::text
+            as source_person_nationality,
+
+        disease,
+
+        outcome
+            as original_source_outcome,
+
+        death_date
+            as date_of_death,
+
+        cast(
+            coalesce(
+                final_date,
+                date_reported
+            ) as timestamp
+        ) as outcome_recorded_datetime,
+
+        /*
+         * NPHIIS carries a single classification; it feeds both the
+         * initial and the final canonical classification.
+         */
+        classification
+            as source_initial_classification,
+
+        case
+            when lower(trim(classification)) = 'suspected'
+                then 'SUSPECTED'
+
+            when lower(trim(classification)) = 'probable'
+                then 'PROBABLE'
+
+            when lower(trim(classification)) = 'confirmed'
+                then 'CONFIRMED'
+
+            when lower(trim(classification)) in (
+                'discarded',
+                'not a case',
+                'no case'
+            )
+                then 'DISCARDED'
+
+            when nullif(trim(classification), '') is null
+                then 'UNKNOWN'
+
+            else upper(trim(classification))
+        end as initial_classification,
+
+        classification
+            as source_final_classification,
+
+        case
+            when lower(trim(classification)) = 'suspected'
+                then 'SUSPECTED'
+
+            when lower(trim(classification)) = 'probable'
+                then 'PROBABLE'
+
+            when lower(trim(classification)) = 'confirmed'
+                then 'CONFIRMED'
+
+            when lower(trim(classification)) in (
+                'discarded',
+                'not a case',
+                'no case',
+                'negative'
+            )
+                then 'DISCARDED'
+
+            when nullif(trim(classification), '') is null
+                then 'UNKNOWN'
+
+            else upper(trim(classification))
+        end as final_classification,
+
+        final_result
+            as source_final_laboratory_result,
+
+        case
+            when lower(trim(final_result)) in (
+                'positive',
+                'detected',
+                'reactive',
+                'positive/detected',
+                'positive / detected'
+            )
+                then 'POSITIVE'
+
+            when lower(trim(final_result)) in (
+                'negative',
+                'not detected',
+                'not_detected',
+                'non-reactive',
+                'non reactive',
+                'nonreactive',
+                'negative/not detected',
+                'negative / not detected'
+            )
+                then 'NEGATIVE'
+
+            when lower(trim(final_result)) in (
+                'inconclusive',
+                'indeterminate',
+                'invalid'
+            )
+                then 'INCONCLUSIVE'
+
+            when nullif(trim(final_result), '') is null
+                then 'UNKNOWN'
+
+            else 'OTHER'
+        end as final_laboratory_result,
+
+        specimen_id
+            as specimen_identifier,
+
+        coalesce(county, county_rls)
+            as reporting_county,
+
+        coalesce(sub_county, subcounty_rls)
+            as reporting_subcounty,
+
+        facility
+            as health_facility,
+
+        null::text
+            as checked_by,
+
+        null::numeric
+            as latitude,
+
+        null::numeric
+            as longitude,
+
+        _ingested_at
+            as ingested_at,
+
+        _batch_id
+            as batch_id,
+
+        _source_file
+            as source_file,
+
+        'INVESTIGATION'::text
+            as case_record_origin
+
+    from nphiis_source
+
+),
+
+/*
+ * Every source branch must return the same canonical columns in the
+ * same order. Everything below this point is source-agnostic.
+ */
+
+/*
+ * Lab-only confirmed cases carry no recorded outcome. They are taken
+ * from fct_case_investigation (which owns the LIMS anti-join) so the
+ * outcome fact has the same case denominator as the case fact; the
+ * downstream rules resolve them to treatment_outcome UNKNOWN.
+ */
+lims_prepared as (
+
+    select
+        source_system,
+        source_row_id,
+        source_record_id,
+
+        source_person_name,
+        source_person_identifier,
+        source_person_sex,
+        source_person_date_of_birth,
+        source_person_nationality,
+
+        disease,
+
+        null::text
+            as original_source_outcome,
+
+        null::date
+            as date_of_death,
+
+        investigation_datetime
+            as outcome_recorded_datetime,
+
+        source_initial_classification,
+        initial_classification,
+
+        source_final_classification,
+        final_classification,
+
+        source_final_laboratory_result,
+
+        'POSITIVE'::text
+            as final_laboratory_result,
+
+        specimen_identifier,
+
+        reporting_county,
+        reporting_subcounty,
+        health_facility,
+
+        checked_by,
+
+        latitude,
+        longitude,
+
+        ingested_at,
+        batch_id,
+        source_file,
+
+        case_record_origin
+
+    from {{ ref('fct_case_investigation') }}
+
+    where source_system = 'LIMS'
+
+),
+
+prepared as (
+
+    select *
+    from adam_prepared
+
+    union all
+
+    select *
+    from nphiis_prepared
+
+    union all
+
+    select *
+    from lims_prepared
+
+),
+
+source_outcome_standardized as (
 
     select
         *,
@@ -304,11 +611,11 @@ adam_source_outcome_standardized as (
             else upper(trim(original_source_outcome))
         end as source_outcome
 
-    from adam_prepared
+    from prepared
 
 ),
 
-adam_death_validation as (
+death_validation as (
 
     select
         *,
@@ -353,11 +660,11 @@ adam_death_validation as (
             else null
         end as outcome_validation_status
 
-    from adam_source_outcome_standardized
+    from source_outcome_standardized
 
 ),
 
-adam_treatment_outcomes as (
+treatment_outcomes as (
 
     select
         *,
@@ -394,7 +701,7 @@ adam_treatment_outcomes as (
         1::integer
             as treatment_outcome_count
 
-    from adam_death_validation
+    from death_validation
 
 ),
 
@@ -447,9 +754,11 @@ unioned_treatment_outcomes as (
 
         ingested_at,
         batch_id,
-        source_file
+        source_file,
 
-    from adam_treatment_outcomes
+        case_record_origin
+
+    from treatment_outcomes
 
 ),
 
@@ -524,7 +833,9 @@ final as (
 
         o.ingested_at,
         o.batch_id,
-        o.source_file
+        o.source_file,
+
+        o.case_record_origin
 
     from unioned_treatment_outcomes o
 

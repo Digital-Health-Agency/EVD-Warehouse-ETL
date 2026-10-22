@@ -25,4 +25,4 @@ RUN cd /app/transform/evd_transform && \
 COPY workspace.yaml /app/workspace.yaml
 
 ENV DAGSTER_HOME=/dagster_home
-EXPOSE 3000
+EXPOSE 3001

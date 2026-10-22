@@ -140,6 +140,29 @@ classified as (
 
 ),
 
+linked as (
+
+    select
+        cl.*,
+
+        /*
+         * Index case the contact was exposed to, resolved within the
+         * same source system (NPHIIS source_epid -> case epid).
+         */
+        ci.case_investigation_key
+            as linked_case_investigation_key,
+
+        ci.final_classification
+            as linked_case_final_classification
+
+    from classified cl
+
+    left join {{ ref('fct_case_investigation') }} ci
+        on ci.source_system = cl.source_system
+       and ci.source_record_id = cl.source_case_identifier
+
+),
+
 final as (
 
     select
@@ -150,6 +173,7 @@ final as (
         contact_registration_key,
         registration_date_key,
         contact_date_of_birth_key,
+        linked_case_investigation_key,
 
         /*
          * Source metadata.
@@ -224,10 +248,57 @@ final as (
         checked_by,
 
         /*
+         * Contact tracing.
+         */
+        source_case_identifier,
+        linked_case_final_classification,
+        exposure_type,
+        exposure_date,
+        relationship_to_case,
+        followup_end_date,
+        days_followed,
+        monitoring_status,
+        seen_recently_flag,
+        ever_symptomatic_flag,
+
+        /*
          * Base additive measure.
          */
         contact_registration_count
             as total_contact_registration_count,
+
+        /*
+         * Follow-up measures.
+         */
+        case
+            when monitoring_status ilike 'under follow%'
+                then contact_registration_count
+            else 0
+        end::integer as under_followup_contact_count,
+
+        case
+            when monitoring_status ilike '%complete%'
+                then contact_registration_count
+            else 0
+        end::integer as followup_completed_contact_count,
+
+        case
+            when ever_symptomatic_flag = 1
+                then contact_registration_count
+            else 0
+        end::integer as symptomatic_contact_count,
+
+        case
+            when seen_recently_flag = 1
+                then contact_registration_count
+            else 0
+        end::integer as seen_recently_contact_count,
+
+        case
+            when linked_case_investigation_key is not null
+                then contact_registration_count
+            else 0
+        end::integer as linked_to_case_count,
 
         /*
          * Classification measures.
@@ -311,7 +382,7 @@ final as (
         batch_id,
         source_file
 
-    from classified
+    from linked
 
 )
 
