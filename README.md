@@ -50,6 +50,10 @@ EVD-Warehouse-ETL/
 
 Prereqs: Docker, [uv](https://docs.astral.sh/uv/), GNU make.
 
+Setting up a fresh environment? See
+[`docs/fresh-environment-fixes.md`](docs/fresh-environment-fixes.md) for
+two install/build problems that only show up there.
+
 ```bash
 cp .env.example .env       # fill in MinIO + Postgres credentials
 make migrate                # create bronze/silver/gold schemas

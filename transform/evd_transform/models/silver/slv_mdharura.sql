@@ -4,6 +4,15 @@
     alias = 'slv_mdharura'
 ) }}
 
+{#-
+    The m-Dharura extractor renamed community_unit to unit_name/unit_type
+    (EVD-Surveillance-scripts-v1 eaa08ce). Bronze only has community_unit
+    if it ingested records from before that change, so select it only when
+    the column exists.
+-#}
+{%- set bronze_columns = adapter.get_columns_in_relation(source('bronze', 'mdharura_raw'))
+    | map(attribute='name') | map('lower') | list -%}
+
 with source_data as (
 
     select
@@ -16,7 +25,11 @@ with source_data as (
 
         id_field,
         signal,
+        {% if 'community_unit' in bronze_columns -%}
         community_unit,
+        {%- else -%}
+        null::text as community_unit,
+        {%- endif %}
         subcounty,
         county,
         created_at,
