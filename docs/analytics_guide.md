@@ -101,7 +101,16 @@ Facts:
   same dimension joins and count pattern.
 - `fct_lab_result` — deduped LIMS results joined to facility and
   collection/result date dims, with a categorized result
-  (Positive/Negative/Inconclusive/Unknown/Other).
+  (Positive/Negative/Inconclusive/Unknown/Other). Grain is the test
+  event. Gold `report_lab_result` keeps `total_test_count` /
+  `positive_test_count` at that grain (laboratory reporting counts tests)
+  and adds case- and specimen-grain counters ranked within a test code:
+  `tested_case_count` / `positive_case_count` are 1 on the first (positive)
+  test of each LIMS case (`lab_case_key`), `tested_specimen_count` /
+  `positive_specimen_count` likewise per specimen, and
+  `repeat_case_test_flag` / `repeat_specimen_test_flag` mark the rest.
+  `sum(positive_case_count) where test_code = '86518-8'` must always equal
+  `sum(final_confirmed_count)` in `report_case_investigation`.
 Gold `report_case_investigation` links cases to LIMS on a whitespace-free
 key (`lims_link_key` macro) that matches either the LIMS specimen
 identifier (ADAM) or the LIMS case identifier (NPHIIS `specimen_id`, e.g.
