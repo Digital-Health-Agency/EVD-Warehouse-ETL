@@ -39,3 +39,11 @@ sources:
         description: >
           Raw Taifa Care KenyaEMR flagged case records, flattened and staged
           from MinIO.
+      - name: nphiis_cases_raw
+        description: >
+          Raw NPHIIS case records, flattened and staged from MinIO. Sibling
+          data folder to contacts under the same nphiis_raw/ MinIO prefix.
+      - name: nphiis_contacts_raw
+        description: >
+          Raw NPHIIS contact records, flattened and staged from MinIO. Sibling
+          data folder to cases under the same nphiis_raw/ MinIO prefix.

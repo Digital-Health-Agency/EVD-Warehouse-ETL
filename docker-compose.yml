@@ -9,10 +9,10 @@ services:
     command: >
       dagster-webserver
         --host 0.0.0.0
-        --port 3000
+        --port 3001
         --workspace /app/workspace.yaml
     ports:
-      - "3001:3000"
+      - "3001:3001"
     env_file: .env
     environment:
       DAGSTER_HOME: /dagster_home
@@ -23,7 +23,7 @@ services:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/server_info"]
+      test: ["CMD", "curl", "-f", "http://localhost:3001/server_info"]
       interval: 30s
       timeout: 10s
       retries: 3

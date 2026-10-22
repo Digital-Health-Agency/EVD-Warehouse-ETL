@@ -1,0 +1,25 @@
+/home/koskedk/workspace/dha/EVD-Warehouse-ETL/.venv/lib/python3.12/site-packages/click/core.py:907: SupersessionWarning: Function `dev_command` is superseded and its usage is discouraged. Use 'dg dev' instead.
+  return callback(*args, **kwargs)
+[32m2026-10-22 10:05:02 +0300[0m - dagster - [34mWARNING[0m - Found a dagster instance configuration value (dagster.yaml) in the current folder, but your DAGSTER_HOME environment variable is set to /home/koskedk/workspace/dha/EVD-Warehouse-ETL/.dagster_home. The dagster.yaml file will not be used to configure Dagster unless it is placed in the same folder as DAGSTER_HOME.
+[32m2026-10-22 10:05:02 +0300[0m - dagster - [34mINFO[0m - Loaded environment variables from .env file: MINIO_ENDPOINT,MINIO_ROOT_USER,MINIO_ROOT_PASSWORD,MINIO_BUCKET,PG_HOST,PG_PORT,PG_DBNAME,PG_USER,PG_PASSWORD
+[32m2026-10-22 10:05:02 +0300[0m - dagster - [34mWARNING[0m - No dagster instance configuration file (dagster.yaml) found at /home/koskedk/workspace/dha/EVD-Warehouse-ETL/.dagster_home. Defaulting to loading and storing all metadata with /home/koskedk/workspace/dha/EVD-Warehouse-ETL/.dagster_home. If this is the desired behavior, create an empty dagster.yaml file in /home/koskedk/workspace/dha/EVD-Warehouse-ETL/.dagster_home.
+[32m2026-10-22 10:05:02 +0300[0m - dagster - [34mINFO[0m - Launching Dagster services...
+[32m2026-10-22 10:05:10 +0300[0m - dagster.daemon - [34mINFO[0m - Instance is configured with the following daemons: ['AssetDaemon', 'BackfillDaemon', 'FreshnessDaemon', 'QueuedRunCoordinatorDaemon', 'SchedulerDaemon', 'SensorDaemon']
+[32m2026-10-22 10:05:10 +0300[0m - dagster-webserver - [34mINFO[0m - Loaded environment variables from .env file: MINIO_ENDPOINT,MINIO_ROOT_USER,MINIO_ROOT_PASSWORD,MINIO_BUCKET,PG_HOST,PG_PORT,PG_DBNAME,PG_USER,PG_PASSWORD
+[32m2026-10-22 10:05:10 +0300[0m - dagster.daemon.SensorDaemon - [34mINFO[0m - Checking for new runs for sensor: dbt_after_ingest_sensor
+[32m2026-10-22 10:05:10 +0300[0m - dagster.daemon.SensorDaemon - [34mINFO[0m - Sensor dbt_after_ingest_sensor skipped: Sensor function returned an empty result
+[32m2026-10-22 10:05:11 +0300[0m - dagster-webserver - [34mINFO[0m - Serving dagster-webserver on http://127.0.0.1:3001 in process 26077
+[32m2026-10-22 10:05:43 +0300[0m - dagster.daemon.SensorDaemon - [34mINFO[0m - Checking for new runs for sensor: dbt_after_ingest_sensor
+[32m2026-10-22 10:05:43 +0300[0m - dagster.daemon.SensorDaemon - [34mINFO[0m - Sensor dbt_after_ingest_sensor skipped: Sensor function returned an empty result
+[32m2026-10-22 10:06:13 +0300[0m - dagster.daemon.SensorDaemon - [34mINFO[0m - Checking for new runs for sensor: dbt_after_ingest_sensor
+[32m2026-10-22 10:06:13 +0300[0m - dagster.daemon.SensorDaemon - [34mINFO[0m - Sensor dbt_after_ingest_sensor skipped: Sensor function returned an empty result
+[32m2026-10-22 10:06:45 +0300[0m - dagster.daemon.SensorDaemon - [34mINFO[0m - Checking for new runs for sensor: dbt_after_ingest_sensor
+[32m2026-10-22 10:06:45 +0300[0m - dagster.daemon.SensorDaemon - [34mINFO[0m - Sensor dbt_after_ingest_sensor skipped: Sensor function returned an empty result
+[32m2026-10-22 10:07:18 +0300[0m - dagster.daemon.SensorDaemon - [34mINFO[0m - Checking for new runs for sensor: dbt_after_ingest_sensor
+[32m2026-10-22 10:07:18 +0300[0m - dagster.daemon.SensorDaemon - [34mINFO[0m - Sensor dbt_after_ingest_sensor skipped: Sensor function returned an empty result
+[32m2026-10-22 10:07:50 +0300[0m - dagster.daemon.SensorDaemon - [34mINFO[0m - Checking for new runs for sensor: dbt_after_ingest_sensor
+[32m2026-10-22 10:07:50 +0300[0m - dagster.daemon.SensorDaemon - [34mINFO[0m - Sensor dbt_after_ingest_sensor skipped: Sensor function returned an empty result
+[32m2026-10-22 10:08:23 +0300[0m - dagster.daemon.SensorDaemon - [34mINFO[0m - Checking for new runs for sensor: dbt_after_ingest_sensor
+[32m2026-10-22 10:08:23 +0300[0m - dagster.daemon.SensorDaemon - [34mINFO[0m - Sensor dbt_after_ingest_sensor skipped: Sensor function returned an empty result
+[32m2026-10-22 10:08:55 +0300[0m - dagster.daemon.SensorDaemon - [34mINFO[0m - Checking for new runs for sensor: dbt_after_ingest_sensor
+[32m2026-10-22 10:08:55 +0300[0m - dagster.daemon.SensorDaemon - [34mINFO[0m - Sensor dbt_after_ingest_sensor skipped: Sensor function returned an empty result

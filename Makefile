@@ -40,7 +40,7 @@ test:
 
 dagster-dev:
 	mkdir -p $(PWD)/.dagster_home
-	DAGSTER_HOME=$(PWD)/.dagster_home uv run dagster dev -m evd_orchestration
+	DAGSTER_HOME=$(PWD)/.dagster_home uv run dagster dev -m evd_orchestration --port 3001
 
 dbt-dev:
 	uv run --env-file .env dbt build --project-dir transform/evd_transform --profiles-dir transform --target dev

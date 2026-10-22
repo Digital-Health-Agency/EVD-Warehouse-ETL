@@ -61,7 +61,7 @@ make dbt-deps && make dbt   # build silver + gold
 Or run the Dagster UI locally:
 
 ```bash
-make dagster-dev            # http://localhost:3000
+make dagster-dev            # http://localhost:3001
 ```
 
 Run tests:
