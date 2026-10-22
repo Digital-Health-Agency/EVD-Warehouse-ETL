@@ -6,8 +6,41 @@
 
 with screening_source as (
 
-    select *
-    from {{ ref('fct_screening') }}
+    select
+        f.*,
+
+        /*
+         * Age in whole years at the screening date: from the date of birth
+         * where the source has one (ADaM, Taifa Care), else the age the
+         * source reported (UHAI). Ages outside 0-110 are treated as
+         * unknown: some UHAI records hold a birth year (e.g. 1985) or a
+         * mistyped value in the age field.
+         */
+        case
+            when f.source_person_date_of_birth is not null
+             and f.screening_date is not null
+             and f.source_person_date_of_birth <= f.screening_date
+             and extract(
+                    year from age(
+                        f.screening_date,
+                        f.source_person_date_of_birth
+                    )
+                 ) <= 110
+                then extract(
+                    year from age(
+                        f.screening_date,
+                        f.source_person_date_of_birth
+                    )
+                )::integer
+
+            when f.source_person_date_of_birth is null
+             and f.source_person_age_years between 0 and 110
+                then f.source_person_age_years
+
+            else null
+        end as age_at_screening
+
+    from {{ ref('fct_screening') }} f
 
 ),
 
@@ -197,6 +230,50 @@ screening_enriched as (
 
             else 'UNKNOWN'
         end as reporting_screening_category,
+
+        ------------------------------------------------------------------
+        -- Reporting age group (same bands as report_contact_registration)
+        ------------------------------------------------------------------
+
+        case
+            when s.age_at_screening is null
+                then 'UNKNOWN'
+
+            when s.age_at_screening < 1
+                then '<1'
+
+            when s.age_at_screening between 1 and 4
+                then '1-4'
+
+            when s.age_at_screening between 5 and 9
+                then '5-9'
+
+            when s.age_at_screening between 10 and 14
+                then '10-14'
+
+            when s.age_at_screening between 15 and 19
+                then '15-19'
+
+            when s.age_at_screening between 20 and 24
+                then '20-24'
+
+            when s.age_at_screening between 25 and 34
+                then '25-34'
+
+            when s.age_at_screening between 35 and 44
+                then '35-44'
+
+            when s.age_at_screening between 45 and 54
+                then '45-54'
+
+            when s.age_at_screening between 55 and 64
+                then '55-64'
+
+            when s.age_at_screening >= 65
+                then '65+'
+
+            else 'UNKNOWN'
+        end as reporting_age_group,
 
         ------------------------------------------------------------------
         -- Reporting measures
