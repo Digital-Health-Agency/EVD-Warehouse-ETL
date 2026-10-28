@@ -63,3 +63,47 @@ confirms the pattern, they could be turned into ages as
   this ETL change **before** that backend branch: until these columns exist
   in production, a backend that selects them would fail on screening
   linelists.
+
+# Contact, travel, clinical and exposure fields (UHAI)
+
+On 27 Oct 2026 UHAI's surveillance API (`/api/v1/surveillance/ebola-cases`)
+added 20 fields. With the scripts-repo loader change that keeps every API
+field (EVD-Surveillance-scripts-v1, branch `feat/uhai-keep-all-api-fields`),
+they reach `bronze.uhai_raw` and are carried through to
+`gold.report_screening`. ADaM and Taifa Care rows have them as null.
+
+| `gold.report_screening` column | From UHAI field | Coverage (UHAI) |
+|---|---|---|
+| `person_phone_number` | `phone_number`: the WhatsApp number the screening was submitted from | 100% |
+| `dependent_phone_number` | `dependent_phone_number`: number given for a dependant | 3.8% (dependants only) |
+| `is_dependent` | `is_dependent` (Yes/No) | 100% |
+| `country_of_departure` | `country_of_departure` | 99.7% |
+| `entry_country` | `entry_country` | 84.9% |
+| `arrival_date` | `arrival_date` (date) | 84.9% (from September) |
+| `mode_of_transport` | `mode_of_transport` (upper-cased, e.g. AIR) | 99.7% |
+| `transport_number` | `transport_number` (flight / vehicle) | 99.9% |
+| `seat_number` | `seat_number` | 76.2% |
+| `temperature` | `temperature` (numeric °C) | 50.8% |
+| `symptoms` | `symptoms` | 1.2% (only when reported) |
+| `risk_factors` | `risk_factors` | 7.3% |
+| `visited_affected_countries`, `contact_with_confirmed_case`, `healthcare_lab_work`, `funeral_body_prep`, `contact_animals`, `bushmeat_handling`, `forest_cave_exposure` | same names (Yes/No) | 100% each |
+| `screening_channel` | `source` (bronze column `source_field`) | 100% (agent, app_self, self, whatsapp) |
+
+Coverage measured on 299,630 UHAI screenings, 3 Jul – 28 Oct 2026.
+
+**Personal data.** `person_phone_number` and `dependent_phone_number`
+identify people. The dashboard backend classifies both as personal data:
+only users with the surveillance role can see or search them, and other
+callers' queries never name the columns.
+
+**Why `column_or_null`.** A bronze column only exists once some record has
+had a value for it. `slv_uhai_cases` reads every new field through the
+`column_or_null` macro, so the model still builds against a bronze table
+that has not received a field yet (a fresh environment, or before the first
+load after UHAI's change). The catch: a misspelt column name also silently
+becomes null, so check coverage after changes. This is how `source` landing
+as `source_field` was found.
+
+**Getting history.** The API returns the new fields for past screenings too,
+so one re-pull of UHAI from 3 Jul fills them for every record. Pull in
+weekly windows: a single 3 Jul – today run timed out on the larger payload.
